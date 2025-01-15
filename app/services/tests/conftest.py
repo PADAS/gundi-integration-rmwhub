@@ -254,11 +254,11 @@ def mock_rmwhub_items():
             traps_in_set=2,
             trawl_path=None,
             share_with=["Earth_Ranger"],
-            set_id="test_set_id_0",
+            id="test_set_id_0",
             deployment_type="trawl",
             traps=[
                 Trap(
-                    trap_id="test_trap_id_0",
+                    id="test_trap_id_0",
                     sequence=1,
                     latitude=-5.19816,
                     longitude=122.8113,
@@ -271,7 +271,7 @@ def mock_rmwhub_items():
                     is_on_end=True,
                 ),
                 Trap(
-                    trap_id="test_trap_id_1",
+                    id="test_trap_id_1",
                     sequence=2,
                     latitude=44.63648713,
                     longitude=-63.58044069,
@@ -290,11 +290,11 @@ def mock_rmwhub_items():
             traps_in_set=2,
             trawl_path=None,
             share_with=["Earth_Ranger"],
-            set_id="test_set_id_1",
+            id="test_set_id_1",
             deployment_type="trawl",
             traps=[
                 Trap(
-                    trap_id="test_trap_id_2",
+                    id="test_trap_id_2",
                     sequence=1,
                     latitude=44.3748774,
                     longitude=-68.1630351,
@@ -307,7 +307,7 @@ def mock_rmwhub_items():
                     is_on_end=True,
                 ),
                 Trap(
-                    trap_id="test_trap_id_3",
+                    id="test_trap_id_3",
                     sequence=2,
                     latitude=44.3754398,
                     longitude=-68.1630321,
@@ -326,11 +326,11 @@ def mock_rmwhub_items():
             traps_in_set=2,
             trawl_path=None,
             share_with=["Earth_Ranger"],
-            set_id="test_set_id_2",
+            id="test_set_id_2",
             deployment_type="trawl",
             traps=[
                 Trap(
-                    trap_id="test_trap_id_4",
+                    id="test_trap_id_4",
                     sequence=1,
                     latitude=41.4414271,
                     longitude=-70.9058206,
@@ -343,7 +343,7 @@ def mock_rmwhub_items():
                     is_on_end=True,
                 ),
                 Trap(
-                    trap_id="test_trap_id_5",
+                    id="test_trap_id_5",
                     sequence=2,
                     latitude=41.4383309,
                     longitude=-70.9043825,
@@ -362,11 +362,11 @@ def mock_rmwhub_items():
             traps_in_set=2,
             trawl_path=None,
             share_with=["Earth_Ranger"],
-            set_id="test_set_id_3",
+            id="test_set_id_3",
             deployment_type="trawl",
             traps=[
                 Trap(
-                    trap_id="test_trap_id_6",
+                    id="test_trap_id_6",
                     sequence=1,
                     latitude=42.0471565,
                     longitude=-70.6253929,
@@ -379,7 +379,7 @@ def mock_rmwhub_items():
                     is_on_end=True,
                 ),
                 Trap(
-                    trap_id="test_trap_id_7",
+                    id="test_trap_id_7",
                     sequence=2,
                     latitude=42.0474643,
                     longitude=-70.625706,
@@ -398,11 +398,11 @@ def mock_rmwhub_items():
             traps_in_set=1,
             trawl_path=None,
             share_with=["Earth_Ranger"],
-            set_id="test_set_id_4",
+            id="test_set_id_4",
             deployment_type="single",
             traps=[
                 Trap(
-                    trap_id="test_trap_id_8",
+                    id="test_trap_id_8",
                     sequence=1,
                     latitude=41.4414271,
                     longitude=-70.9058206,

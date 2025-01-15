@@ -74,9 +74,11 @@ async def action_pull_observations(
     )
 
     logger.info(
-        f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets)}"
+        f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets.sets)}"
     )
-    observations = rmw_adapter.process_sets(rmwSets)
+    observations = await rmw_adapter.process_sets(
+        rmwSets, start_datetime_str, action_config.sync_interval_minutes
+    )
 
     # Send the extracted data to Gundi
     logger.info(f"Sending {len(observations)} observations to Gundi...")

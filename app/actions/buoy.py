@@ -18,12 +18,14 @@ class BuoyClient:
         self.er_site = er_site
 
     # TODO: Validate include details works as expected
-    async def get_er_subjects(self, start_datetime: str, end_datetime: str) -> List:
+    async def get_er_subjects(self, start_datetime: str = None) -> List:
 
-        updated_sice = start_datetime
+        updated_since = start_datetime
         url = self.er_site + f"/subjects/?include_details=True&include_inactive=True"
+        if updated_since:
+            url += f"&updated_since={updated_since}"
         BuoyClient.headers["Authorization"] = f"Bearer {self.er_token}"
-        response = await requests.get(url, headers=BuoyClient.headers)
+        response = requests.get(url, headers=BuoyClient.headers)
 
         if response.status_code == 200:
             print("Request was successful")
@@ -32,29 +34,6 @@ class BuoyClient:
                 logger.error(f"No subject sources found")
                 return None
             return data["data"]
-        else:
-            logger.error(f"Failed to make request. Status code: {response.status_code}")
-
-        return None
-
-        return subjects
-
-    async def get_er_subjectsources(self) -> List:
-        """
-        Get SubjectSource mapping
-        """
-
-        url = self.er_site + f"/subjectsources/?include_details=True"
-        BuoyClient.headers["Authorization"] = f"Bearer {self.er_token}"
-        response = await requests.get(url, headers=BuoyClient.headers)
-
-        if response.status_code == 200:
-            print("Request was successful")
-            data = json.loads(response.text)
-            if len(data["data"]) == 0:
-                logger.error(f"No subject sources found")
-                return None
-            return data["data"]["results"]
         else:
             logger.error(f"Failed to make request. Status code: {response.status_code}")
 
