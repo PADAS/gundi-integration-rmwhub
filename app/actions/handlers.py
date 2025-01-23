@@ -84,6 +84,10 @@ async def action_pull_observations(
             config_data=action_config.dict(),
         )
 
+        if len(rmwSets.sets) is 0:
+            logger.info("No gearsets returned from RMW Hub API.")
+            return {"observations_extracted": 0}
+
         logger.info(
             f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets.sets)}"
         )
@@ -152,6 +156,10 @@ async def action_pull_observations_24_hour_sync(
             },
             config_data=action_config.dict(),
         )
+
+        if len(rmwSets.sets) is 0:
+            logger.info("No gearsets returned from RMW Hub API.")
+            return {"observations_extracted": 0}
 
         logger.info(
             f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets.sets)}"

@@ -201,6 +201,10 @@ class RmwHubAdapter:
         )
         response_json = json.loads(response)
 
+        if "sets" not in response_json:
+            logger.error(f"Failed to download data from RMW Hub API. Error: {response}")
+            return RmwSets(sets=[])
+
         sets = response_json["sets"]
         gearsets = []
         for set in sets:
