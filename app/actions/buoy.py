@@ -1,6 +1,7 @@
 import json
 from typing import List
 import logging
+import uuid
 
 import requests
 
@@ -40,11 +41,19 @@ class BuoyClient:
         return None
 
     async def patch_er_subject_status(self, er_subject_id: str, state: bool):
+        """
+        Update the state of a subject by either the subject ID or the subject name
+        """
+
         BuoyClient.headers["Authorization"] = f"Bearer {self.er_token}"
 
         # TODO: Check if er_subject_id is not UUID, then find the subject by name
+        try:
+            uuid_obj = uuid.UUID(er_subject_id)
+            url = self.er_site + f"/subject/{er_subject_id}"
+        except ValueError:
+            url = self.er_site + f"/subject/?name={er_subject_id}"
 
-        url = self.er_site + f"/subject/{er_subject_id}"
         dict = {"is_active": state}
         response = await requests.patch(url, headers=BuoyClient.headers, json=dict)
         if response.status_code != 200:
@@ -54,7 +63,7 @@ class BuoyClient:
                 response.text,
             )
 
-    def resolve_subject_name(self, subject_name: str):
+    def clean_subject_name(self, subject_name: str):
         """
         Resolve the subject name to the actual subject name
         """

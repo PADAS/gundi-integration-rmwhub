@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime, timedelta
 
+from app.actions.helpers import Environment, get_er_token_and_site
 from app.services.activity_logger import activity_logger, log_activity
 from app.services.gundi import send_observations_to_gundi
 from gundi_core.events import LogLevel
@@ -44,16 +45,14 @@ async def action_pull_observations(
     )
     end_datetime_str = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
-    # TODO: Get ER token and site from the portal
-    # er_token, er_destination = await get_er_token_and_site(str(integration.id))
-    er_token = action_config.er_token.get_secret_value()
-    er_destination = action_config.er_site
+    # TODO: Create sub-actions for each destination
+    er_token, er_destination = await get_er_token_and_site(integration, Environment.DEV)
 
     rmw_adapter = RmwHubAdapter(
         action_config.api_key.get_secret_value(),
         action_config.rmw_url,
         er_token,
-        er_destination,
+        er_destination + "api/v1.0",
     )
 
     logger.info(
@@ -87,7 +86,7 @@ async def action_pull_observations(
     )
 
     # Patch subject status
-    # TODO: Get ER_subjects by name and patch statuses for existing subjects
+    await rmw_adapter.push_status_updates(observations=observations, rmw_sets=rmwSets)
 
     # The result will be recorded in the portal if using the activity_logger decorator
     return {"observations_extracted": len(observations)}
