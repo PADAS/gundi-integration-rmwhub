@@ -4,9 +4,11 @@ from typing import List
 
 import hashlib
 import logging
+import httpx
 import requests
 import json
 from pydantic import validator, BaseModel
+import stamina
 
 from app.actions.buoy import BuoyClient
 
@@ -253,12 +255,12 @@ class RmwHubAdapter:
             (self.er_client.clean_subject_name(subject.get("name")), subject)
             for subject in er_subjects
         )
-        er_subject_id_to_subject_mapping = dict(
+        self.er_subject_id_to_subject_mapping = dict(
             (subject.get("id"), subject) for subject in er_subjects
         )
         er_subject_names_and_ids = set(
             self.er_subject_name_to_subject_mapping.keys()
-        ).union(er_subject_id_to_subject_mapping.keys())
+        ).union(self.er_subject_id_to_subject_mapping.keys())
 
         # Iterate through rmwSets and determine what is an insert and what is an update to Earthranger
         rmw_inserts = set()
@@ -308,8 +310,10 @@ class RmwHubAdapter:
                     er_subject = self.er_subject_name_to_subject_mapping.get(
                         clean_trap_id
                     )
-                elif clean_trap_id in er_subject_id_to_subject_mapping.keys():
-                    er_subject = er_subject_id_to_subject_mapping.get(clean_trap_id)
+                elif clean_trap_id in self.er_subject_id_to_subject_mapping.keys():
+                    er_subject = self.er_subject_id_to_subject_mapping.get(
+                        clean_trap_id
+                    )
                 else:
                     logger.error(
                         f"Subject ID {clean_trap_id} not found in ER subjects."
@@ -323,14 +327,12 @@ class RmwHubAdapter:
 
                 observations.extend(new_observations)
                 logger.info(
-                    f"Processed {len(new_observations)} new observations for trap ID {er_subject.get('id')}."
+                    f"Processed {len(new_observations)} new observations for trap ID {trap.id}."
                 )
 
                 if len(new_observations) == 0:
                     # New observations dict will be empty if ER has the latest update
-                    logger.info(
-                        f"ER has the most recent update for trap ID {er_subject.get('id')}."
-                    )
+                    logger.info(f"ER has the most recent update for trap ID {trap.id}.")
 
         return observations
 
@@ -456,9 +458,13 @@ class RmwHubAdapter:
             trap_id_in_er = "rmwhub_" + (
                 trap.id.replace("e_", "").replace("rmwhub_", "")
             )
-            await self.er_client.patch_er_subject_status(
-                trap_id_in_er, True if trap.status == "deployed" else False
-            )
+            async for attempt in stamina.retry_context(
+                on=httpx.HTTPError, wait_initial=1.0, wait_jitter=5.0, wait_max=32.0
+            ):
+                with attempt:
+                    await self.er_client.patch_er_subject_status(
+                        trap_id_in_er, True if trap.status == "deployed" else False
+                    )
         else:
             logger.error(
                 f"Failed to compare gear set for trap ID {trap.id}. RMW deployed: {deployment_time}, RMW retrieved: {retrieval_time}"

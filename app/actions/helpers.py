@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class Environment(Enum):
-    DEV = "Dev"
-    STAGE = "Staging"
-    PRODUCTION = "Prod"
+    DEV = "Buoy Dev"
+    STAGE = "Buoy Staging"
+    PRODUCTION = "Buoy Prod"
 
 
 _client = GundiClient()

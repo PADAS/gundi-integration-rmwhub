@@ -55,7 +55,7 @@ class BuoyClient:
             url = self.er_site + f"/subject/?name={er_subject_id}"
 
         dict = {"is_active": state}
-        response = await requests.patch(url, headers=BuoyClient.headers, json=dict)
+        response = requests.patch(url, headers=BuoyClient.headers, json=dict)
         if response.status_code != 200:
             logger.exception(
                 "Failed to update subject state for %s. Error: %s",
