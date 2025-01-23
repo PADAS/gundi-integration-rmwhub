@@ -8,6 +8,7 @@ from app.actions.rmwhub import RmwHubClient
 
 
 @pytest.mark.asyncio
+# TODO: Rewrite test
 async def test_rmwhub_download_data(mocker, mock_rmwhub_response, a_good_configuration):
     """
     Test rmwhub.download_data
@@ -15,7 +16,7 @@ async def test_rmwhub_download_data(mocker, mock_rmwhub_response, a_good_configu
 
     # Setup mock_rmwhub_client
     mocker.patch(
-        "app.actions.rmwhub.RmwHubClient.search_others",
+        "app.actions.rmwhub.RmwHubClient.search_hub",
         return_value=json.dumps(mock_rmwhub_response),
     )
 
@@ -24,15 +25,14 @@ async def test_rmwhub_download_data(mocker, mock_rmwhub_response, a_good_configu
     rmwadapter = RmwHubAdapter(
         a_good_configuration.api_key, a_good_configuration.rmw_url
     )
-    updates, deletes = rmwadapter.download_data_search_others(
-        str(datetime.now().isoformat())
-    )
+    updates, deletes = rmwadapter.download_data(str(datetime.now().isoformat()))
 
     assert len(updates) == 5
     assert len(deletes) == 5
 
 
 @pytest.mark.asyncio
+# TODO: rewrite test
 async def test_rmwhub_process_updates(mock_rmwhub_items, a_good_configuration):
     """
     Test rmwhub.process_updates
