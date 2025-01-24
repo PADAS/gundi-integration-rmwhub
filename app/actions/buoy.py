@@ -38,7 +38,7 @@ class BuoyClient:
         else:
             logger.error(f"Failed to make request. Status code: {response.status_code}")
 
-        return None
+        return []
 
     async def patch_er_subject_status(self, er_subject_id: str, state: bool):
         """
