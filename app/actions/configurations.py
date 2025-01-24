@@ -17,7 +17,6 @@ class AuthenticateConfig(AuthActionConfiguration, ExecutableActionMixin):
 
 
 class PullRmwHubObservationsConfiguration(PullActionConfiguration):
-    sync_interval_minutes: int = 5  # TODO: This doesn't affect Gundi's scheduler yet.
     api_key: pydantic.SecretStr = pydantic.Field(
         ...,
         title="rmwHUB API Key",

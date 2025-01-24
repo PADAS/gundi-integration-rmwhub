@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 _client = GundiClient()
 
 
+LOAD_BATCH_SIZE = 100
+
+
 async def action_auth(integration: Integration, action_config: AuthenticateConfig):
     logger.info(
         f"Executing auth action with integration {integration} and action_config {action_config}..."
@@ -37,16 +40,11 @@ async def action_auth(integration: Integration, action_config: AuthenticateConfi
 async def action_pull_observations(
     integration, action_config: PullRmwHubObservationsConfiguration
 ):
-
-    # Add your business logic to extract data here...
     current_datetime = datetime.now()
-    start_datetime = current_datetime - timedelta(
-        minutes=action_config.sync_interval_minutes
-    )
+    sync_interval_minutes = 20000
+    start_datetime = current_datetime - timedelta(minutes=sync_interval_minutes)
     start_datetime_str = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
-    end_datetime = current_datetime + timedelta(
-        minutes=action_config.sync_interval_minutes
-    )
+    end_datetime = current_datetime + timedelta(minutes=sync_interval_minutes)
     end_datetime_str = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
     # TODO: Create sub-actions for each destination
@@ -68,10 +66,9 @@ async def action_pull_observations(
             f"Downloading data from RMW Hub API...For the dates: {start_datetime_str} - {end_datetime_str}"
         )
         rmwSets = await rmw_adapter.download_data(
-            start_datetime_str, action_config.sync_interval_minutes
+            start_datetime_str, sync_interval_minutes
         )
 
-        # Optionally, log a custom messages to be shown in the portal
         await log_activity(
             integration_id=integration.id,
             action_id="pull_observations",
@@ -84,7 +81,7 @@ async def action_pull_observations(
             config_data=action_config.dict(),
         )
 
-        if len(rmwSets.sets) is 0:
+        if len(rmwSets.sets) == 0:
             logger.info("No gearsets returned from RMW Hub API.")
             return {"observations_extracted": 0}
 
@@ -92,15 +89,16 @@ async def action_pull_observations(
             f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets.sets)}"
         )
         observations = await rmw_adapter.process_sets(
-            rmwSets, start_datetime_str, action_config.sync_interval_minutes
+            rmwSets, start_datetime_str, sync_interval_minutes
         )
         total_observations.extend(observations)
 
-        # Send the extracted data to Gundi
-        logger.info(f"Sending {len(observations)} observations to Gundi...")
-        await send_observations_to_gundi(
-            observations=observations, integration_id=str(integration.id)
-        )
+        # Send the extracted data to Gundi in batches
+        for batch in generate_batches(observations):
+            logger.info(f"Sending {len(batch)} observations to Gundi...")
+            await send_observations_to_gundi(
+                observations=batch, integration_id=str(integration.id)
+            )
 
         # Patch subject status
         await rmw_adapter.push_status_updates(
@@ -112,7 +110,7 @@ async def action_pull_observations(
 
 
 @activity_logger()
-@crontab_schedule("0 0 * * *")  # Run 24 hours at midnight
+@crontab_schedule("0 0 * * *")  # Run every 24 hours at midnight
 async def action_pull_observations_24_hour_sync(
     integration, action_config: PullRmwHubObservationsConfiguration
 ):
@@ -157,7 +155,7 @@ async def action_pull_observations_24_hour_sync(
             config_data=action_config.dict(),
         )
 
-        if len(rmwSets.sets) is 0:
+        if len(rmwSets.sets) == 0:
             logger.info("No gearsets returned from RMW Hub API.")
             return {"observations_extracted": 0}
 
@@ -169,11 +167,12 @@ async def action_pull_observations_24_hour_sync(
         )
         total_observations.extend(observations)
 
-        # Send the extracted data to Gundi
-        logger.info(f"Sending {len(observations)} observations to Gundi...")
-        await send_observations_to_gundi(
-            observations=observations, integration_id=str(integration.id)
-        )
+        # Send the extracted data to Gundi in batches
+        for batch in generate_batches(observations):
+            logger.info(f"Sending {len(batch)} observations to Gundi...")
+            await send_observations_to_gundi(
+                observations=batch, integration_id=str(integration.id)
+            )
 
         # Patch subject status
         await rmw_adapter.push_status_updates(
@@ -182,3 +181,8 @@ async def action_pull_observations_24_hour_sync(
 
     # The result will be recorded in the portal if using the activity_logger decorator
     return {"observations_extracted": len(total_observations)}
+
+
+def generate_batches(iterable, n=LOAD_BATCH_SIZE):
+    for i in range(0, len(iterable), n):
+        yield iterable[i : i + n]
