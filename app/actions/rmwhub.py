@@ -6,7 +6,6 @@ import hashlib
 import logging
 import uuid
 import httpx
-import requests
 import json
 from pydantic import validator, BaseModel
 import stamina
@@ -705,7 +704,8 @@ class RmwHubClient:
 
         url = self.rmw_url + "/search_hub/"
 
-        response = requests.post(url, headers=RmwHubClient.HEADERS, json=data)
+        async with httpx.AsyncClient() as client:
+            response = client.post(url, headers=RmwHubClient.HEADERS, json=data)
 
         if response.status_code != 200:
             logger.error(
@@ -728,7 +728,8 @@ class RmwHubClient:
             "sets": updates,
         }
 
-        response = requests.post(url, headers=RmwHubClient.HEADERS, json=upload_data)
+        with httpx.AsyncClient() as client:
+            response = client.post(url, headers=RmwHubClient.HEADERS, json=upload_data)
 
         if response.status_code != 200:
             logger.error(
