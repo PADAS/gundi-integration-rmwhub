@@ -88,10 +88,16 @@ async def action_pull_observations(
         logger.info(
             f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets.sets)}"
         )
-        observations = await rmw_adapter.process_sets(
+        observations = await rmw_adapter.process_rmw_download(
             rmwSets, start_datetime_str, sync_interval_minutes
         )
         total_observations.extend(observations)
+
+        # Upload changes from ER to RMW Hub
+        put_set_id_observations = await rmw_adapter.process_rmw_upload(
+            rmwSets, start_datetime_str
+        )
+        total_observations.extend(put_set_id_observations)
 
         # Send the extracted data to Gundi in batches
         for batch in generate_batches(observations):
@@ -101,6 +107,7 @@ async def action_pull_observations(
             )
 
         # Patch subject status
+        # TODO: Remove when status workaround fix verified in Earthranger.
         await rmw_adapter.push_status_updates(
             observations=observations, rmw_sets=rmwSets
         )
@@ -162,10 +169,16 @@ async def action_pull_observations_24_hour_sync(
         logger.info(
             f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets.sets)}"
         )
-        observations = await rmw_adapter.process_sets(
+        observations = await rmw_adapter.process_rmw_download(
             rmwSets, start_datetime_str, sync_interval_minutes
         )
         total_observations.extend(observations)
+
+        # Upload changes from ER to RMW Hub
+        put_set_id_observations = await rmw_adapter.process_rmw_upload(
+            rmwSets, start_datetime_str
+        )
+        total_observations.extend(put_set_id_observations)
 
         # Send the extracted data to Gundi in batches
         for batch in generate_batches(observations):
