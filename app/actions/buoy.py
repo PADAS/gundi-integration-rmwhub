@@ -62,16 +62,3 @@ class BuoyClient:
                 er_subject_id,
                 response.text,
             )
-
-    def clean_subject_name(self, subject_name: str):
-        """
-        Resolve the subject name to the actual subject name
-        """
-
-        cleaned_str = (
-            subject_name.replace("device_", "")
-            .replace("_0", "")
-            .replace("_1", "")
-            .replace("rmwhub_", "")
-        )
-        return cleaned_str

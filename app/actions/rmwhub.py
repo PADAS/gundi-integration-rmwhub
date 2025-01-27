@@ -256,7 +256,7 @@ class RmwHubAdapter:
         # Create maps of er_subject_names and rmw_trap_ids/set_ids
         # RMW trap IDs would be in the subject name
         self.er_subject_name_to_subject_mapping = dict(
-            (self.er_client.clean_subject_name(subject.get("name")), subject)
+            (RmwHubAdapter.clean_id_str(subject.get("name")), subject)
             for subject in er_subjects
         )
         self.er_subject_id_to_subject_mapping = dict(
@@ -271,10 +271,7 @@ class RmwHubAdapter:
         rmw_updates = set()
         for gearset in rmw_sets.sets:
             for trap in gearset.traps:
-                if (
-                    trap.id.replace("e_", "").replace("rmwhub_", "")
-                    in er_subject_names_and_ids
-                ):
+                if RmwHubAdapter.clean_id_str(trap.id) in er_subject_names_and_ids:
                     rmw_updates.add(gearset)
                 else:
                     rmw_inserts.add(gearset)
@@ -309,7 +306,7 @@ class RmwHubAdapter:
                 logger.info(f"Processing trap ID {trap.id} for update to ER.")
 
                 # Get subject from ER
-                clean_trap_id = trap.id.replace("e_", "").replace("rmwhub_", "")
+                clean_trap_id = RmwHubAdapter.clean_id_str(trap.id)
                 if clean_trap_id in self.er_subject_name_to_subject_mapping.keys():
                     er_subject = self.er_subject_name_to_subject_mapping.get(
                         clean_trap_id
@@ -363,12 +360,7 @@ class RmwHubAdapter:
         er_inserts = set()
         er_updates = set()
         for subject in er_subjects:
-            if (
-                self.er_client.clean_subject_name(subject.get("name"))
-                .replace("e_", "")
-                .replace("rmw_", "")
-                in rmw_trap_ids
-            ):
+            if RmwHubAdapter.clean_id_str(subject.get("name")) in rmw_trap_ids:
                 er_updates.add(subject)
             else:
                 er_inserts.add(subject)
@@ -398,16 +390,13 @@ class RmwHubAdapter:
         )
 
         for observation in observations:
-            rmw_set_id = (
-                observation.get("additional")
-                .get("rmwhub_set_id")
-                .replace("rmwhub_", "")
-                .replace("e_", "")
+            rmw_set_id = RmwHubAdapter.clean_id_str(
+                observation.get("additional").get("rmwhub_set_id")
             )
             rmw_set = rmw_set_id_to_gearset_mapping[rmw_set_id]
             for trap in rmw_set.traps:
                 # Get subject from ER
-                clean_trap_id = trap.id.replace("e_", "").replace("rmwhub_", "")
+                clean_trap_id = RmwHubAdapter.clean_id_str(trap.id)
                 if clean_trap_id in self.er_subject_name_to_subject_mapping.keys():
                     er_subject = self.er_subject_name_to_subject_mapping.get(
                         clean_trap_id
@@ -459,9 +448,7 @@ class RmwHubAdapter:
                 f"Insert operation for Trap {trap.id}. Cannot update subject that does not exist."
             )
 
-            trap_id_in_er = "rmwhub_" + (
-                trap.id.replace("e_", "").replace("rmwhub_", "")
-            )
+            trap_id_in_er = "rmwhub_" + (RmwHubAdapter.clean_id_str(trap.id))
             async for attempt in stamina.retry_context(
                 on=httpx.HTTPError, wait_initial=1.0, wait_jitter=5.0, wait_max=32.0
             ):
@@ -587,6 +574,22 @@ class RmwHubAdapter:
         for gear_set in sets:
             set_id_to_set_mapping[gear_set.id] = gear_set
         return set_id_to_set_mapping
+
+    @staticmethod
+    def clean_id_str(subject_name: str):
+        """
+        Resolve the ID string to just the UUID
+        """
+
+        cleaned_str = (
+            subject_name.replace("device_", "")
+            .replace("_0", "")
+            .replace("_1", "")
+            .replace("rmwhub_", "")
+            .replace("rmw_", "")
+            .replace("e_", "")
+        )
+        return cleaned_str
 
 
 class RmwHubClient:
