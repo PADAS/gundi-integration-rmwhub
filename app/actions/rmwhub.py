@@ -650,11 +650,11 @@ class RmwHubAdapter:
             traps_to_gearsets_mapping_key = self._create_traps_gearsets_mapping_key(
                 [device.get("device_id") for device in devices]
             )
-            rmwhub_set_id = traps_to_gearsets_mapping.get(
+            rmwhub_set = traps_to_gearsets_mapping.get(
                 traps_to_gearsets_mapping_key
             )
 
-            if not rmwhub_set_id:
+            if not rmwhub_set:
                 logger.error(f"RMW Set ID not found for subject ID {subject.get('id')}. No action.")
                 log_action_activity(
                     integration_id=self.integration_id,
@@ -664,10 +664,8 @@ class RmwHubAdapter:
                 )
                 continue
 
-            rmw_gearset = set_id_to_gearset_mapping[rmwhub_set_id]
-
             updated_gearset = await self._create_rmw_update_from_er_subject(
-                subject, rmw_gearset, latest_observation
+                subject, rmwhub_set, latest_observation
             )
 
             if updated_gearset is None:
