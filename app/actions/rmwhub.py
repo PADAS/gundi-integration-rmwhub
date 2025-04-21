@@ -293,7 +293,7 @@ class RmwHubAdapter:
             logger.error(f"Failed to download data from RMW Hub API. Error: {response}")
             return []
 
-        return self.convert_to_sets(response)
+        return self.convert_to_sets(response_json)
 
     async def _get_newest_set_from_rmwhub(self, devices):
         """
@@ -324,9 +324,9 @@ class RmwHubAdapter:
         ref: https://ropeless.network/api/docs#/Download
         """
 
-        url = self.rmw_url + "/search_own/"
+        url = self.rmw_client.rmw_url + "/search_own/"
 
-        data = {"format_version": 0.1, "api_key": self.api_key}
+        data = {"format_version": 0.1, "api_key": self.rmw_client.api_key}
         if(trap_id):
             data['trap_id'] = trap_id
 
@@ -338,13 +338,12 @@ class RmwHubAdapter:
                 f"Failed to download data from RMW Hub API. Error: {response.status_code} - {response.text}"
             )
 
-        return self.convert_to_sets(response)
+        return self.convert_to_sets(response.json())
 
-    def convert_to_sets(self, response: dict) -> List[GearSet]:
-        response_json = json.loads(response)
+    def convert_to_sets(self, response_json: dict) -> List[GearSet]:
 
         if "sets" not in response_json:
-            logger.error(f"Failed to download data from RMW Hub API. Error: {response}")
+            logger.error(f"Failed to download data from RMW Hub API.")
             return []
 
         sets = response_json["sets"]
