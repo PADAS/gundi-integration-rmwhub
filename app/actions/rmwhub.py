@@ -21,8 +21,6 @@ from app.actions.buoy import BuoyClient
 from app.services.activity_logger import log_action_activity
 
 logger = logging.getLogger(__name__)
-logging.getLogger("backoff").addHandler(logging.StreamHandler())
-logging.getLogger("backoff").setLevel(logging.WARNING)
 
 
 SOURCE_TYPE = "ropeless_buoy"
@@ -298,7 +296,9 @@ class RmwHubAdapter:
 
         return self.convert_to_sets(response_json)
 
-    @backoff.on_exception(backoff.expo, (httpx.HTTPError,), max_tries=5)
+    @backoff.on_exception(
+        backoff.expo, (httpx.ReadTimeout, httpx.ConnectTimeout), max_tries=5
+    )
     async def _get_newest_set_from_rmwhub(self, devices):
         """
         Downloads data from the RMW Hub API using the search_own endpoint.
@@ -548,6 +548,7 @@ class RmwHubAdapter:
 
         # Iterate through er_subjects and determine what is an insert and what is an update to RmwHub
         # Based on the display ID existence on the RMW side
+        failed_subjects = 0
         for subject in er_subjects:
             subject_name = subject.get("name")
 
@@ -583,25 +584,15 @@ class RmwHubAdapter:
                 rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
             except httpx.ReadTimeout as e:
                 logger.error(
-                    f"Error reading from RMW Hub while getting newest set: {e}"
+                    f"Error reading from RMW Hub while getting newest set for Subject {subject_name}: {e}"
                 )
-                await log_action_activity(
-                    integration_id=self.integration_id,
-                    action_id="pull_observations",
-                    title="Error reading from RMW Hub while getting newest set.",
-                    level=LogLevel.ERROR,
-                )
+                failed_subjects += 1
                 continue
             except httpx.ConnectTimeout as e:
                 logger.error(
-                    f"Error connecting to RMW Hub while getting newest set: {e}"
+                    f"Error connecting to RMW Hub while getting newest set for Subject {subject_name}: {e}"
                 )
-                await log_action_activity(
-                    integration_id=self.integration_id,
-                    action_id="pull_observations",
-                    title="Error connecting to RMW Hub while getting newest set.",
-                    level=LogLevel.ERROR,
-                )
+                failed_subjects += 1
                 continue
 
             if rmwhub_set and (
@@ -624,6 +615,15 @@ class RmwHubAdapter:
         num_new_observations = len(
             [trap.id for gearset in updates for trap in gearset.traps]
         )
+
+        if failed_subjects:
+            await log_action_activity(
+                integration_id=self.integration_id,
+                action_id="pull_observations",
+                title=f"Number of failed ER subject uploads: {failed_subjects}",
+                level=LogLevel.ERROR,
+            )
+
         return num_new_observations, response
 
     # TODO RF-752: Remove unecessary code when status updates are verified to be working through event
