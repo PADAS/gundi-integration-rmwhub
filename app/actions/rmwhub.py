@@ -548,6 +548,7 @@ class RmwHubAdapter:
 
         # Iterate through er_subjects and determine what is an insert and what is an update to RmwHub
         # Based on the display ID existence on the RMW side
+        failed_subjects = 0
         for subject in er_subjects:
             subject_name = subject.get("name")
 
@@ -579,7 +580,20 @@ class RmwHubAdapter:
                 )
                 continue
 
-            rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
+            try:
+                rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
+            except httpx.ReadTimeout as e:
+                logger.error(
+                    f"Error reading from RMW Hub while getting newest set for Subject {subject_name}: {e}"
+                )
+                failed_subjects += 1
+                continue
+            except httpx.ConnectTimeout as e:
+                logger.error(
+                    f"Error connecting to RMW Hub while getting newest set for Subject {subject_name}: {e}"
+                )
+                failed_subjects += 1
+                continue
 
             if rmwhub_set and (
                 parse_date(rmwhub_set.when_updated_utc)
@@ -601,6 +615,15 @@ class RmwHubAdapter:
         num_new_observations = len(
             [trap.id for gearset in updates for trap in gearset.traps]
         )
+
+        if failed_subjects:
+            await log_action_activity(
+                integration_id=self.integration_id,
+                action_id="pull_observations",
+                title=f"Number of failed ER subject uploads: {failed_subjects}",
+                level=LogLevel.ERROR,
+            )
+
         return num_new_observations, response
 
     # TODO RF-752: Remove unecessary code when status updates are verified to be working through event
