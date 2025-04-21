@@ -21,8 +21,6 @@ from app.actions.buoy import BuoyClient
 from app.services.activity_logger import log_action_activity
 
 logger = logging.getLogger(__name__)
-logging.getLogger("backoff").addHandler(logging.StreamHandler())
-logging.getLogger("backoff").setLevel(logging.WARNING)
 
 
 SOURCE_TYPE = "ropeless_buoy"
@@ -298,7 +296,9 @@ class RmwHubAdapter:
 
         return self.convert_to_sets(response_json)
 
-    @backoff.on_exception(backoff.expo, (httpx.HTTPError,), max_tries=5)
+    @backoff.on_exception(
+        backoff.expo, (httpx.ReadTimeout, httpx.ConnectTimeout), max_tries=5
+    )
     async def _get_newest_set_from_rmwhub(self, devices):
         """
         Downloads data from the RMW Hub API using the search_own endpoint.
@@ -579,30 +579,7 @@ class RmwHubAdapter:
                 )
                 continue
 
-            try:
-                rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
-            except httpx.ReadTimeout as e:
-                logger.error(
-                    f"Error reading from RMW Hub while getting newest set: {e}"
-                )
-                await log_action_activity(
-                    integration_id=self.integration_id,
-                    action_id="pull_observations",
-                    title="Error reading from RMW Hub while getting newest set.",
-                    level=LogLevel.ERROR,
-                )
-                continue
-            except httpx.ConnectTimeout as e:
-                logger.error(
-                    f"Error connecting to RMW Hub while getting newest set: {e}"
-                )
-                await log_action_activity(
-                    integration_id=self.integration_id,
-                    action_id="pull_observations",
-                    title="Error connecting to RMW Hub while getting newest set.",
-                    level=LogLevel.ERROR,
-                )
-                continue
+            rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
 
             if rmwhub_set and (
                 parse_date(rmwhub_set.when_updated_utc)
