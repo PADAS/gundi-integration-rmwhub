@@ -307,9 +307,9 @@ class RmwHubAdapter:
 
         if not devices:
             return None
-          
+
         target_traps = await self._generate_trap_list(devices)
-        sets = await self.search_own(trap_id = target_traps[0])
+        sets = await self.search_own(trap_id=target_traps[0])
 
         newest = None
         newestDate = None
@@ -521,7 +521,12 @@ class RmwHubAdapter:
         """
         Generates a list of rmwHub trap IDs from a list of devices referenced in ER for the sake of matching
         """
-        return sorted([self.validate_id_length("e_" + self.clean_id_str(device['device_id'])) for device in devices])
+        return sorted(
+            [
+                self.validate_id_length("e_" + self.clean_id_str(device["device_id"]))
+                for device in devices
+            ]
+        )
 
     # Trap IDs must be atleast 32 characters and no more than 38 characters
     def validate_id_length(self, id_str: str):
@@ -600,7 +605,7 @@ class RmwHubAdapter:
                 continue
 
             trap_list = await self._generate_trap_list(devices)
-            if(trap_list in existing_updates):
+            if trap_list in existing_updates:
                 continue
 
             rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
@@ -1031,7 +1036,7 @@ class RmwHubClient:
         data = {
             "format_version": 0.1,
             "api_key": self.api_key,
-            "max_sets": 2000,
+            "max_sets": 10000,
             # "status": "deployed", // Pull all data not just deployed gear
             "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat(),
         }
