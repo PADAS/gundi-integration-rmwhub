@@ -1,5 +1,5 @@
 import hashlib
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import json
 import logging
@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Optional, Tuple
 
+import backoff
 import httpx
 import pytz
 import stamina
@@ -295,14 +296,18 @@ class RmwHubAdapter:
 
         return self.convert_to_sets(response_json)
 
+    @backoff.on_exception(
+        backoff.expo, (httpx.ReadTimeout, httpx.ConnectTimeout), max_tries=5
+    )
     async def _get_newest_set_from_rmwhub(self, devices):
         """
         Downloads data from the RMW Hub API using the search_own endpoint.
         ref: https://ropeless.network/api/docs#/Download
         """
 
-        if(not devices):
+        if not devices:
             return None
+          
         target_traps = await self._generate_trap_list(devices)
         sets = await self.search_own(trap_id = target_traps[0])
 
@@ -310,15 +315,15 @@ class RmwHubAdapter:
         newestDate = None
         for gearset in sets:
             set_traps = sorted([trap.id for trap in gearset.traps])
-            if(set_traps == target_traps):
+            if set_traps == target_traps:
                 datecomp = parse_date(gearset.when_updated_utc)
-                if(not newestDate or (datecomp > newestDate)):
+                if not newestDate or (datecomp > newestDate):
                     newest = gearset
                     newestDate = datecomp
-                    
+
         return newest
 
-    async def search_own(self, trap_id = None) -> dict:
+    async def search_own(self, trap_id=None) -> dict:
         """
         Downloads data from the RMWHub API using the search_own endpoint.
         ref: https://ropeless.network/api/docs#/Download
@@ -327,9 +332,10 @@ class RmwHubAdapter:
         url = self.rmw_client.rmw_url + "/search_own/"
 
         data = {"format_version": 0.1, "api_key": self.rmw_client.api_key}
-        if(trap_id):
-            data['trap_id'] = trap_id
-        
+
+        if trap_id:
+            data["trap_id"] = trap_id
+
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
 
@@ -546,25 +552,51 @@ class RmwHubAdapter:
 
         # Iterate through er_subjects and determine what is an insert and what is an update to RmwHub
         # Based on the display ID existence on the RMW side
+        failed_subjects = 0
         for subject in er_subjects:
             subject_name = subject.get("name")
 
             if subject_name.startswith("rmw"):
-                logger.debug(f"Subject ID {subject_name} originally from rmwHub. Skipped.")
+                logger.debug(
+                    f"Subject ID {subject_name} originally from rmwHub. Skipped."
+                )
                 continue
             elif not subject_name:
                 logger.error(f"Subject ID {subject['id']} has no name. No action.")
                 continue
 
-            latest_observation = await self.er_client.get_latest_observations(subject['id'], 1)
-            if(not latest_observation):
-                logging.info(f"No latest observation found for subject {subject['id']}.  Skipping...")
+            latest_observation = await self.er_client.get_latest_observations(
+                subject["id"], 1
+            )
+            if not latest_observation:
+                logging.info(
+                    f"No latest observation found for subject {subject['id']}.  Skipping..."
+                )
                 continue
             latest_observation = latest_observation[0]
 
-            devices = latest_observation.get('observation_details', {}).get('devices', [])
-            if(not devices):
-                logging.info(f"No devices in latest observation for subject {subject['id']}.  Skipping...")
+            devices = latest_observation.get("observation_details", {}).get(
+                "devices", []
+            )
+            if not devices:
+                logging.info(
+                    f"No devices in latest observation for subject {subject['id']}.  Skipping..."
+                )
+                continue
+
+            try:
+                rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
+            except httpx.ReadTimeout as e:
+                logger.error(
+                    f"Error reading from RMW Hub while getting newest set for Subject {subject_name}: {e}"
+                )
+                failed_subjects += 1
+                continue
+            except httpx.ConnectTimeout as e:
+                logger.error(
+                    f"Error connecting to RMW Hub while getting newest set for Subject {subject_name}: {e}"
+                )
+                failed_subjects += 1
                 continue
 
             trap_list = await self._generate_trap_list(devices)
@@ -573,22 +605,36 @@ class RmwHubAdapter:
 
             rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
 
-            if(rmwhub_set and (parse_date(rmwhub_set.when_updated_utc) > parse_date(latest_observation['created_at']))):
+            if rmwhub_set and (
+                parse_date(rmwhub_set.when_updated_utc)
+                > parse_date(latest_observation["created_at"])
+            ):
                 continue
 
-            new_gearset = await self._create_rmw_update_from_er_subject(subject, latest_observation, rmwhub_set)
-            if(new_gearset):
+            new_gearset = await self._create_rmw_update_from_er_subject(
+                subject, latest_observation, rmwhub_set
+            )
+            if new_gearset:
                 updates.append(new_gearset)
                 existing_updates.append(trap_list)
 
         if not updates:
             logger.info("No updates to upload to RMW Hub API.")
             return 0, {"trap_count": 0}
-    
+
         response = await self._upload_data(updates)
         num_new_observations = len(
             [trap.id for gearset in updates for trap in gearset.traps]
         )
+
+        if failed_subjects:
+            await log_action_activity(
+                integration_id=self.integration_id,
+                action_id="pull_observations",
+                title=f"Number of failed ER subject uploads: {failed_subjects}",
+                level=LogLevel.ERROR,
+            )
+
         return num_new_observations, response
 
     # TODO RF-752: Remove unecessary code when status updates are verified to be working through event
@@ -598,7 +644,9 @@ class RmwHubAdapter:
         Process the status updates from the RMW Hub API.
         """
 
-        rmw_set_id_to_gearset_mapping = await self.create_set_id_to_gearset_mapping(rmw_sets)
+        rmw_set_id_to_gearset_mapping = await self.create_set_id_to_gearset_mapping(
+            rmw_sets
+        )
 
         visited_traps = set()
         for observation in observations:
@@ -832,7 +880,7 @@ class RmwHubAdapter:
 
             if not deployed and not rmw_gearset:
                 msg = f"This trap ({trap_id}) is not being deployed and still does not exist in RMW Hub, skipping."
-                log_action_activity(
+                await log_action_activity(
                     integration_id=self.integration_id,
                     action_id="pull_observations",
                     title=msg,
@@ -985,7 +1033,7 @@ class RmwHubClient:
             "api_key": self.api_key,
             "max_sets": 2000,
             # "status": "deployed", // Pull all data not just deployed gear
-            "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat()
+            "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat(),
         }
 
         if status:
