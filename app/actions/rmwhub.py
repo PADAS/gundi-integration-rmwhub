@@ -307,13 +307,9 @@ class RmwHubAdapter:
 
         if not devices:
             return None
-        target_traps = sorted(
-            [
-                self.validate_id_length("e_" + self.clean_id_str(device["device_id"]))
-                for device in devices
-            ]
-        )
-        sets = await self.search_own(trap_id=target_traps[0])
+          
+        target_traps = await self._generate_trap_list(devices)
+        sets = await self.search_own(trap_id = target_traps[0])
 
         newest = None
         newestDate = None
@@ -336,6 +332,7 @@ class RmwHubAdapter:
         url = self.rmw_client.rmw_url + "/search_own/"
 
         data = {"format_version": 0.1, "api_key": self.rmw_client.api_key}
+
         if trap_id:
             data["trap_id"] = trap_id
 
@@ -520,6 +517,12 @@ class RmwHubAdapter:
 
         return display_id_hash
 
+    async def _generate_trap_list(self, devices):
+        """
+        Generates a list of rmwHub trap IDs from a list of devices referenced in ER for the sake of matching
+        """
+        return sorted([self.validate_id_length("e_" + self.clean_id_str(device['device_id'])) for device in devices])
+
     # Trap IDs must be atleast 32 characters and no more than 38 characters
     def validate_id_length(self, id_str: str):
         return id_str.ljust(32, "#")
@@ -534,6 +537,7 @@ class RmwHubAdapter:
 
         # Normalize the extracted data into a list of updates following to the RMWHub schema:
         updates = []
+        existing_updates = []
 
         # Get updates from the last interval_minutes in ER
         er_subjects = await self.er_client.get_er_subjects(start_datetime)
@@ -595,6 +599,12 @@ class RmwHubAdapter:
                 failed_subjects += 1
                 continue
 
+            trap_list = await self._generate_trap_list(devices)
+            if(trap_list in existing_updates):
+                continue
+
+            rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
+
             if rmwhub_set and (
                 parse_date(rmwhub_set.when_updated_utc)
                 > parse_date(latest_observation["created_at"])
@@ -606,6 +616,7 @@ class RmwHubAdapter:
             )
             if new_gearset:
                 updates.append(new_gearset)
+                existing_updates.append(trap_list)
 
         if not updates:
             logger.info("No updates to upload to RMW Hub API.")
