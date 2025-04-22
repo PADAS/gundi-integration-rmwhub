@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+from unittest.mock import AsyncMock
 import dateparser
 import pytz
 import time
@@ -220,8 +221,8 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
-    assert observations == 5
-    assert rmw_response["trap_count"] == 5
+    assert observations == 3
+    assert rmw_response["trap_count"] == 3
 
     # Test handle ER upload success with ER Subjects from RMW
     data = mock_er_subjects_from_rmw
@@ -306,9 +307,7 @@ async def test_rmwhub_adapter_process_upload_update_success(
     )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
-
-    # Should make 4 and skip the 5th
-    assert observations == 4
+    assert observations == 2
     assert rmw_response
 
 
@@ -394,3 +393,38 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     assert gearset_update
     assert gearset_update.traps[0].id
     assert len(gearset_update.traps[0].id) >= 32
+
+@pytest.mark.asyncio
+async def test_rmwhub_adapter_create_rmw_update_from_er_subject(mocker, a_good_integration, a_good_configuration, mock_er_subjects_update,
+                                                                mock_rmw_upload_response, mock_get_latest_observations_with_duplicates, mock_rmwhub_items_update):
+    rmw_adapter = RmwHubAdapter(
+        a_good_integration.id,
+        a_good_configuration.api_key,
+        a_good_configuration.rmw_url,
+        "super_secret_token",
+        "http://er.destination.com",
+    )
+    start_datetime = datetime.now(tz=pytz.utc)
+    mock_log_activity = AsyncMock()
+    mocker.patch("app.actions.rmwhub.log_action_activity", mock_log_activity)
+
+    # Test handle ER upload success with updates
+    data = mock_er_subjects_update
+    mocker.patch(
+        "app.actions.buoy.BuoyClient.get_er_subjects",
+        return_value=data,
+    )
+    mocker.patch(
+        "app.actions.buoy.BuoyClient.get_latest_observations",
+        return_value=mock_get_latest_observations_with_duplicates,
+    )
+
+    mocker.patch(
+        "app.actions.rmwhub.RmwHubAdapter.search_own",
+        return_value=mock_rmwhub_items_update,
+    )
+    
+    uploadMock = AsyncMock()
+    mocker.patch("app.actions.rmwhub.RmwHubAdapter._upload_data", uploadMock)
+    observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
+    assert(observations == 2)

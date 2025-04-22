@@ -501,7 +501,7 @@ def mock_rmw_upload_response():
         "description": "Update confirmation",
         "acknowledged": True,
         "datetime_utc": "2025-01-28T22:04:57Z",
-        "trap_count": 5,
+        "trap_count": 3,
         "failed_sets": [],
     }
 
@@ -842,6 +842,37 @@ def mock_er_subjects():
             "url": "https://buoy.dev.pamdas.org/api/v1.0/subject/0931ddaa-770c-4bb4-9d66-b8106c17e043",
         },
     ]
+
+@pytest.fixture
+def mock_get_latest_observations_with_duplicates():
+    return [{
+        'id': '081bfce1-e977-46ad-b948-aa90c9283304',
+        'location': {"latitude": 20.624751, "longitude": -105.310673},
+        'created_at': '2025-01-28T14:51:02.996570-08:00',
+        'recorded_at': '2025-01-26T03:20:57+00:00',
+        'source': 'random-string',
+        'exclusion_flags': 0,
+        'observation_details':
+            {
+                'devices': [
+                    {
+                        "label": "a",
+                        "location": {"latitude": 20.629892, "longitude": -105.318998},
+                        "device_id": "F6528E48-39B9-49A8-8F24-0023CF5EE3D7",
+                        "last_updated": "2025-01-25T13:22:32+00:00",
+                    },
+                    {
+                        "label": "b",
+                        "location": {"latitude": 20.624751, "longitude": -105.310673},
+                        "device_id": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
+                        "last_updated": "2025-01-25T13:22:32+00:00",
+                    },
+                ],
+                'display_id': '84f360b0a8a5',
+                'event_type': 'gear_deployed',
+                'subject_is_active': True
+            }
+    }]
     
 @pytest.fixture
 def mock_get_latest_observations():

@@ -82,7 +82,7 @@ async def action_pull_observations(
         )
 
         logger.info(
-            f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat} - {end_datetime.isoformat}"
+            f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
         )
         rmwSets = await rmw_adapter.download_data(start_datetime)
         logger.info(
