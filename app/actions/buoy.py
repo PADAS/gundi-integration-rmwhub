@@ -1,10 +1,10 @@
 import json
 from typing import List
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
-
+import stamina
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class BuoyClient:
 
         return []
 
+    @stamina.retry(on=httpx.HTTPError, attempts = 5, timeout = timedelta(seconds = 10))
     async def get_latest_observations(self, subject_id: str, page_size: int) -> dict:
         """
         Get the latest observations for a subject. Return only the latest observation when page_size = 1.

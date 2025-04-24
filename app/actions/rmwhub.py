@@ -309,7 +309,7 @@ class RmwHubAdapter:
             return None
 
         target_traps = await self._generate_trap_list(devices)
-        sets = await self.search_own(trap_id=target_traps[0])
+        sets = await self.search_own(trap_id = target_traps[0], status = "deployed")
 
         newest = None
         newestDate = None
@@ -323,7 +323,7 @@ class RmwHubAdapter:
 
         return newest
 
-    async def search_own(self, trap_id=None) -> dict:
+    async def search_own(self, trap_id=None, status = None) -> dict:
         """
         Downloads data from the RMWHub API using the search_own endpoint.
         ref: https://ropeless.network/api/docs#/Download
@@ -335,6 +335,9 @@ class RmwHubAdapter:
 
         if trap_id:
             data["trap_id"] = trap_id
+
+        if status:
+            data["status"] = status
 
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
@@ -546,7 +549,15 @@ class RmwHubAdapter:
 
         # Get updates from the last interval_minutes in ER
         er_subjects = await self.er_client.get_er_subjects(start_datetime)
-        if not er_subjects:
+        if er_subjects:
+            await log_action_activity(
+                integration_id=self.integration_id,
+                action_id="pull_observations",
+                title="Processing {len(er_subjects)} updated since {start_datetime.isoformat()} from ER.",
+                level=LogLevel.INFO,
+            )
+    
+        else:
             await log_action_activity(
                 integration_id=self.integration_id,
                 action_id="pull_observations",
@@ -884,14 +895,7 @@ class RmwHubAdapter:
             )
 
             if not deployed and not rmw_gearset:
-                msg = f"This trap ({trap_id}) is not being deployed and still does not exist in RMW Hub, skipping."
-                await log_action_activity(
-                    integration_id=self.integration_id,
-                    action_id="pull_observations",
-                    title=msg,
-                    level=LogLevel.WARNING,
-                )
-                logger.warning(msg)
+                logger.debug(f"This trap ({trap_id}) is not being deployed and still does not exist in RMW Hub, skipping.")
                 continue
 
             rmw_trap_datetime = (
