@@ -6,7 +6,7 @@ import pytest
 
 from app.actions.rmwhub import RmwHubAdapter
 from app.actions.rmwhub import RmwHubClient
-from app.actions.tests.factories import GearsetFactory, TrapFactory
+from app.actions.tests.factories import GearsetFactory, SubjectFactory, TrapFactory
 from app.conftest import AsyncMock
 
 
@@ -163,7 +163,6 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     a_good_configuration,
     a_good_integration,
     mock_rmw_upload_response,
-    mock_er_subjects,
     mock_er_subjects_from_rmw,
     mock_get_latest_observations,
 ):
@@ -215,7 +214,13 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     assert observations == 0
 
     # Test handle ER upload success
-    data = mock_er_subjects
+    num_subjects = 4
+    data = [
+        SubjectFactory.create(
+            name="test_subject_00" + str(i),
+        )
+        for i in range(1, num_subjects + 1)
+    ]
     mocker.patch(
         "app.actions.buoy.BuoyClient.get_er_subjects",
         return_value=data,
@@ -254,8 +259,8 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
-    assert observations == 3
-    assert rmw_response["trap_count"] == 3
+    assert observations == num_subjects
+    assert rmw_response["trap_count"] == num_subjects
 
     # Test handle ER upload success with ER Subjects from RMW
     data = mock_er_subjects_from_rmw
@@ -377,7 +382,7 @@ async def test_rmwhub_adapter_process_upload_update_success(
     )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
-    assert observations == 2
+    assert observations == 3
     assert rmw_response
 
 
@@ -446,7 +451,6 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     mocker,
     a_good_integration,
     a_good_configuration,
-    mock_er_subjects,
     mock_latest_observations,
 ):
     rmwadapter = RmwHubAdapter(
@@ -464,7 +468,7 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
 
     # Test create INSERT update (no existing rmwHub gearset)
     gearset_insert = await rmwadapter._create_rmw_update_from_er_subject(
-        mock_er_subjects[0]
+        SubjectFactory.create(),
     )
 
     assert gearset_insert
@@ -490,7 +494,7 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
         ],
     )
     gearset_update = await rmwadapter._create_rmw_update_from_er_subject(
-        mock_er_subjects[0], rmw_gearset=mock_rmwhub_gearset
+        SubjectFactory.create(), rmw_gearset=mock_rmwhub_gearset
     )
 
     assert gearset_update

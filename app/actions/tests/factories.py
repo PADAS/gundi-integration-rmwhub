@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import hashlib
+import random
 from typing import Dict, List, Optional
 from app.actions.rmwhub import GearSet, Trap
 from datetime import datetime, timezone
@@ -150,7 +151,7 @@ class GearsetFactory:
 class SubjectFactory:
     def create(
         id: str = "test_subject_id_001",
-        name: str = "test_er_subject_name_001",
+        name: str = "test_subject_name_001",
         latitude: float = 40.0,
         longitude: float = -70.0,
         last_updated: str = "2025-01-30T00:00:00Z",
@@ -212,6 +213,40 @@ class SubjectFactory:
             },
             "url": f"https://buoy.dev.pamdas.org/api/v1.0/subject/{id}",
         }
+
+    def create_latest_observation(
+        id: str = "test_subject_id_001",
+    ) -> List:
+        """
+        Factory method to create a Subject dictionary with the latest observation.
+        """
+        return [
+            {
+                "id": id,
+                "location": {"latitude": 40.0, "longitude": -70.0},
+                "created_at": "2025-01-28T14:51:02.996570-08:00",
+                "recorded_at": "2025-01-30T00:00:00Z",
+                "source": "random-string",
+                "exclusion_flags": 0,
+                "observation_details": {
+                    "devices": [
+                        {
+                            "label": "a",
+                            "location": {
+                                "latitude": 40.0,
+                                "longitude": 70.0,
+                            },
+                            "device_id": "test_subject_name_"
+                            + str(random.randint(100, 999)),
+                            "last_updated": "2025-01-25T13:22:32+00:00",
+                        }
+                    ],
+                    "display_id": "84f360b0a8a5",
+                    "event_type": "gear_deployed",
+                    "subject_is_active": True,
+                },
+            }
+        ]
 
     def create_mock_subject_from_observation(observation: Dict) -> Dict:
         """

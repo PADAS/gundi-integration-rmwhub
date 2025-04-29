@@ -4,6 +4,7 @@ from app.actions.configurations import PullRmwHubObservationsConfiguration
 from gundi_core.schemas.v2 import Connection, ConnectionIntegration
 from gundi_core.schemas import IntegrationInformation
 
+from app.actions.tests.factories import SubjectFactory
 from ropeless_utils import State
 
 
@@ -253,7 +254,7 @@ def mock_rmw_upload_response():
         "description": "Update confirmation",
         "acknowledged": True,
         "datetime_utc": "2025-01-28T22:04:57Z",
-        "trap_count": 3,
+        "trap_count": 4,
         "failed_sets": [],
     }
 
@@ -429,174 +430,6 @@ def mock_rmw_observations():
 
 
 @pytest.fixture
-def mock_er_subjects():
-    return [
-        {
-            "content_type": "observations.subject",
-            "id": "0302a774-1971-4a64-8264-1d7f17969442",
-            "name": "short_name",
-            "subject_type": "ropeless_buoy",
-            "subject_subtype": "ropeless_buoy_device",
-            "common_name": None,
-            "additional": {
-                "devices": [
-                    {
-                        "label": "a",
-                        "location": {"latitude": 42.6762, "longitude": -70.6255043},
-                        "device_id": "FBB01895-0BC3-4498-ACAC-BCBCE12F1363",
-                        "last_updated": "2025-01-26T03:20:57+00:00",
-                    }
-                ],
-                "display_id": "30548f5def46",
-                "event_type": "gear_position_rmwhub",
-                "subject_name": "FBB01895-0BC3-4498-ACAC-BCBCE12F1363",
-            },
-            "created_at": "2025-01-28T14:51:02.996570-08:00",
-            "updated_at": "2025-01-28T14:51:02.996595-08:00",
-            "is_active": True,
-            "user": None,
-            "tracks_available": False,
-            "image_url": "/static/pin-black.svg",
-            "last_position_date": "2025-01-16T17:33:21+00:00",
-            "last_position": {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [-70.443459307605, 41.83290438292462],
-                },
-                "properties": {
-                    "title": "edgetech_88CE99D36A_A",
-                    "subject_type": "ropeless_buoy",
-                    "subject_subtype": "ropeless_buoy_device",
-                    "id": "0006a86a-9a99-4112-94b7-f72190ff178f",
-                    "stroke": "#FFFF00",
-                    "stroke-opacity": 1.0,
-                    "stroke-width": 2,
-                    "image": "https://buoy.dev.pamdas.org/static/pin-black.svg",
-                    "radio_state_at": "1970-01-01T00:00:00+00:00",
-                    "radio_state": "na",
-                    "coordinateProperties": {"time": "2025-01-16T17:33:21+00:00"},
-                    "DateTime": "2025-01-16T17:33:21+00:00",
-                },
-            },
-            "url": "https://buoy.dev.pamdas.org/api/v1.0/subject/0302a774-1971-4a64-8264-1d7f17969442",
-        },
-        {
-            "content_type": "observations.subject",
-            "id": "081bfce1-e977-46ad-b948-aa90c9283304",
-            "name": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
-            "subject_type": "ropeless_buoy",
-            "subject_subtype": "ropeless_buoy_device",
-            "common_name": None,
-            "additional": {
-                "devices": [
-                    {
-                        "label": "a",
-                        "location": {"latitude": 20.629892, "longitude": -105.318998},
-                        "device_id": "F6528E48-39B9-49A8-8F24-0023CF5EE3D7",
-                        "last_updated": "2025-01-25T13:22:32+00:00",
-                    },
-                    {
-                        "label": "b",
-                        "location": {"latitude": 20.624751, "longitude": -105.310673},
-                        "device_id": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
-                        "last_updated": "2025-01-25T13:22:32+00:00",
-                    },
-                ],
-                "display_id": "84f360b0a8a5",
-                "event_type": "gear_deployed",
-                "subject_name": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
-            },
-            "created_at": "2025-02-11T13:49:50.852032-08:00",
-            "updated_at": "2025-02-11T13:49:50.852056-08:00",
-            "is_active": True,
-            "user": None,
-            "tracks_available": False,
-            "image_url": "/static/pin-black.svg",
-            "last_position_date": "2025-01-16T17:33:21+00:00",
-            "last_position": {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [-70.443459307605, 41.83290438292462],
-                },
-                "properties": {
-                    "title": "edgetech_88CE99D36A_A",
-                    "subject_type": "ropeless_buoy",
-                    "subject_subtype": "ropeless_buoy_device",
-                    "id": "0006a86a-9a99-4112-94b7-f72190ff178f",
-                    "stroke": "#FFFF00",
-                    "stroke-opacity": 1.0,
-                    "stroke-width": 2,
-                    "image": "https://buoy.dev.pamdas.org/static/pin-black.svg",
-                    "radio_state_at": "1970-01-01T00:00:00+00:00",
-                    "radio_state": "na",
-                    "coordinateProperties": {"time": "2025-01-16T17:33:21+00:00"},
-                    "DateTime": "2025-01-16T17:33:21+00:00",
-                },
-            },
-            "url": "https://buoy.dev.pamdas.org/api/v1.0/subject/081bfce1-e977-46ad-b948-aa90c9283304",
-        },
-        {
-            "content_type": "observations.subject",
-            "id": "0931ddaa-770c-4bb4-9d66-b8106c17e043",
-            "name": "296A5748-7F7A-4A6B-B055-BFFD4CE6E48F",
-            "subject_type": "ropeless_buoy",
-            "subject_subtype": "ropeless_buoy_device",
-            "common_name": None,
-            "additional": {
-                "devices": [
-                    {
-                        "label": "a",
-                        "location": {"latitude": 42.6762032, "longitude": -70.6253728},
-                        "device_id": "296A5748-7F7A-4A6B-B055-BFFD4CE6E48F",
-                        "last_updated": "2025-01-24T14:43:45+00:00",
-                    },
-                    {
-                        "label": "b",
-                        "location": {"latitude": 42.6762032, "longitude": -70.6253728},
-                        "device_id": "CD7F5F30-B498-4F4A-A2CE-81E9FCF3CB46",
-                        "last_updated": "2025-01-24T14:43:45+00:00",
-                    },
-                ],
-                "display_id": "71be27a7ed7e",
-                "event_type": "gear_position_rmwhub",
-                "subject_name": "296A5748-7F7A-4A6B-B055-BFFD4CE6E48F",
-            },
-            "created_at": "2025-01-28T14:50:57.323144-08:00",
-            "updated_at": "2025-01-28T14:50:57.323169-08:00",
-            "is_active": True,
-            "user": None,
-            "tracks_available": False,
-            "image_url": "/static/pin-black.svg",
-            "last_position_date": "2025-01-16T17:33:21+00:00",
-            "last_position": {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [-70.443459307605, 41.83290438292462],
-                },
-                "properties": {
-                    "title": "edgetech_88CE99D36A_A",
-                    "subject_type": "ropeless_buoy",
-                    "subject_subtype": "ropeless_buoy_device",
-                    "id": "0006a86a-9a99-4112-94b7-f72190ff178f",
-                    "stroke": "#FFFF00",
-                    "stroke-opacity": 1.0,
-                    "stroke-width": 2,
-                    "image": "https://buoy.dev.pamdas.org/static/pin-black.svg",
-                    "radio_state_at": "1970-01-01T00:00:00+00:00",
-                    "radio_state": "na",
-                    "coordinateProperties": {"time": "2025-01-16T17:33:21+00:00"},
-                    "DateTime": "2025-01-16T17:33:21+00:00",
-                },
-            },
-            "url": "https://buoy.dev.pamdas.org/api/v1.0/subject/0931ddaa-770c-4bb4-9d66-b8106c17e043",
-        },
-    ]
-
-
-@pytest.fixture
 def mock_get_latest_observations_with_duplicates():
     return [
         {
@@ -637,105 +470,7 @@ def mock_get_latest_observations():
 
     async def _get_latest_observations(self, subject_id: str, page_size: int):
         # You can ignore page_size for this fake implementation
-        if subject_id == "0302a774-1971-4a64-8264-1d7f17969442":
-            return [
-                {
-                    "id": "0302a774-1971-4a64-8264-1d7f17969442",
-                    "location": {"latitude": 42.6762, "longitude": -70.6255043},
-                    "created_at": "2025-01-26T03:20:57+00:00",
-                    "recorded_at": "2025-04-20T14:51:02.996570-08:00",
-                    "source": "random-string",
-                    "exclusion_flags": 0,
-                    "observation_details": {
-                        "devices": [
-                            {
-                                "label": "a",
-                                "location": {
-                                    "latitude": 42.6762,
-                                    "longitude": -70.6255043,
-                                },
-                                "device_id": "100",
-                                "last_updated": "2025-01-26T03:20:57+00:00",
-                            }
-                        ],
-                        "display_id": "30548f5def46",
-                        "event_type": "gear_position_rmwhub",
-                        "subject_is_active": True,
-                    },
-                }
-            ]
-        elif subject_id == "081bfce1-e977-46ad-b948-aa90c9283304":
-            return [
-                {
-                    "id": "081bfce1-e977-46ad-b948-aa90c9283304",
-                    "location": {"latitude": 20.624751, "longitude": -105.310673},
-                    "created_at": "2025-01-28T14:51:02.996570-08:00",
-                    "recorded_at": "2025-01-26T03:20:57+00:00",
-                    "source": "random-string",
-                    "exclusion_flags": 0,
-                    "observation_details": {
-                        "devices": [
-                            {
-                                "label": "a",
-                                "location": {
-                                    "latitude": 20.629892,
-                                    "longitude": -105.318998,
-                                },
-                                "device_id": "F6528E48-39B9-49A8-8F24-0023CF5EE3D7",
-                                "last_updated": "2025-01-25T13:22:32+00:00",
-                            },
-                            {
-                                "label": "b",
-                                "location": {
-                                    "latitude": 20.624751,
-                                    "longitude": -105.310673,
-                                },
-                                "device_id": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
-                                "last_updated": "2025-01-25T13:22:32+00:00",
-                            },
-                        ],
-                        "display_id": "84f360b0a8a5",
-                        "event_type": "gear_deployed",
-                        "subject_is_active": True,
-                    },
-                }
-            ]
-        elif subject_id == "0931ddaa-770c-4bb4-9d66-b8106c17e043":
-            return [
-                {
-                    "id": "0931ddaa-770c-4bb4-9d66-b8106c17e043",
-                    "location": {"latitude": 42.6762032, "longitude": -70.6253728},
-                    "created_at": "2025-01-28T14:51:02.996570-08:00",
-                    "recorded_at": "2025-04-26T03:20:57+00:00",
-                    "source": "random-string",
-                    "exclusion_flags": 0,
-                    "observation_details": {
-                        "devices": [
-                            {
-                                "label": "a",
-                                "location": {
-                                    "latitude": 20.629892,
-                                    "longitude": -105.318998,
-                                },
-                                "device_id": "F6528E48-39B9-49A8-8F24-0023CF5EE3D7",
-                                "last_updated": "2025-01-25T13:22:32+00:00",
-                            },
-                            {
-                                "label": "b",
-                                "location": {
-                                    "latitude": 20.624751,
-                                    "longitude": -105.310673,
-                                },
-                                "device_id": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
-                                "last_updated": "2025-01-25T13:22:32+00:00",
-                            },
-                        ],
-                        "display_id": "71be27a7ed7e",
-                        "event_type": "gear_position_rmwhub",
-                        "subject_is_active": True,
-                    },
-                }
-            ]
+        return SubjectFactory.create_latest_observation(subject_id)
 
     return _get_latest_observations
 
