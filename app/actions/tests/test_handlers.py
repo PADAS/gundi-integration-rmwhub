@@ -2,6 +2,9 @@ from datetime import datetime, timedelta, timezone
 import pytz
 import pytest
 
+from app.actions.tests.factories import GearsetFactory, TrapFactory
+
+
 @pytest.mark.asyncio
 async def test_handler_action_pull_observations(
     mocker,
@@ -14,14 +17,33 @@ async def test_handler_action_pull_observations(
     a_good_configuration,
     a_good_integration,
     a_good_connection,
-    mock_rmwhub_items,
     mock_rmw_observations,
 ):
     """
     Test handler.action_pull_observations
     """
     fixed_now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-    items = mock_rmwhub_items
+    num_gearsets = 5
+    num_traps = 2
+    items = [
+        GearsetFactory.create(
+            traps_in_set=num_traps,
+            set_id="test_set_id_00" + str(j),
+            traps=[
+                TrapFactory.create(
+                    trap_id="test_trap_id_0" + str(j) + str(i),
+                    sequence=i,
+                    latitude=10.0,
+                    longitude=20.0,
+                    deploy_datetime_utc="2023-01-01T00:00:00Z",
+                    retrieved_datetime_utc="2023-01-02T00:00:00Z",
+                    status="retrieved",
+                )
+                for i in range(1, num_traps + 1)
+            ],
+        )
+        for j in range(1, num_gearsets + 1)
+    ]
 
     mocker.patch("app.services.action_runner.action_handlers", mock_action_handlers)
     mocker.patch("app.services.action_runner._portal", mock_gundi_client_v2)
@@ -67,7 +89,9 @@ async def test_handler_action_pull_observations(
     )
 
     sync_interval_minutes = 30
-    expected_start_datetime = (fixed_now - timedelta(minutes=sync_interval_minutes)).astimezone(pytz.utc)
+    expected_start_datetime = (
+        fixed_now - timedelta(minutes=sync_interval_minutes)
+    ).astimezone(pytz.utc)
 
     assert download_data_mock.call_count == len(a_good_connection.destinations)
     for call in download_data_mock.call_args_list:

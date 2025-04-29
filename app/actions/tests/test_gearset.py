@@ -1,22 +1,36 @@
 from datetime import timedelta
 import pytest
 
+from app.actions.tests.factories import GearsetFactory, SubjectFactory, TrapFactory
+
 
 @pytest.mark.asyncio
-async def test_trap_create_observations_force_create(
-    mock_rmwhub_items, mock_er_subjects
-):
+async def test_trap_create_observations_force_create():
     # Setup mock gear and er_subject
-    mock_gear = mock_rmwhub_items[0]
+    num_traps = 2
+    mock_gear = GearsetFactory.create(
+        traps_in_set=num_traps,
+        set_id="test_set_id_001",
+        traps=[
+            TrapFactory.create(
+                trap_id="test_trap_id_00" + str(i),
+                sequence=i,
+                latitude=10.0,
+                longitude=20.0,
+                deploy_datetime_utc="2023-01-01T00:00:00Z",
+                retrieved_datetime_utc="2023-01-02T00:00:00Z",
+                status="deployed",
+            )
+            for i in range(1, num_traps + 1)
+        ],
+    )
     mock_gear.deployment_type = "trawl"
     mock_trap = mock_gear.traps[0]
-    mock_trap.status = "deployed"
 
-    mock_er_subject = mock_er_subjects[0]
-    mock_er_subject["name"] = "rmwhub_" + mock_trap.id
-    mock_er_subject["additional"]["devices"] = [
+    subject_name = "rmwhub_" + mock_trap.id
+    devices = [
         {
-            "device_id": mock_er_subject["name"],
+            "device_id": subject_name,
             "label": "a",
             "location": {
                 "latitude": mock_trap.latitude,
@@ -25,6 +39,14 @@ async def test_trap_create_observations_force_create(
             "last_updated": mock_trap.deploy_datetime_utc,
         }
     ]
+    mock_er_subject = SubjectFactory.create(
+        name=subject_name,
+        latitude=mock_trap.latitude,
+        longitude=mock_trap.longitude,
+        last_updated=mock_trap.deploy_datetime_utc,
+        event_type="gear_deployed",
+        devices=devices,
+    )
 
     expected_recorded_at = (
         mock_trap.get_latest_update_time() + timedelta(seconds=5)
