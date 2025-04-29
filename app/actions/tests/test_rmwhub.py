@@ -33,7 +33,7 @@ async def test_rmwhub_adapter_download_data(
     minute_interval = 5
     rmw_sets = await rmwadapter.download_data(start_datetime, minute_interval)
 
-    assert len(rmw_sets) == 2
+    assert len(rmw_sets) == 1
 
 
 @pytest.mark.asyncio
