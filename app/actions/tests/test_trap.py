@@ -1,15 +1,25 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 
+from app.actions.tests.factories import TrapFactory
+
 
 @pytest.mark.asyncio
-async def test_trap_convert_to_utc(mock_rmwhub_items):
+async def test_trap_convert_to_utc():
     """
     Test trap.convert_to_utc
     """
 
     # Setup mock trap
-    mock_trap = mock_rmwhub_items[0].traps[0]
+    mock_trap = TrapFactory.create(
+        trap_id="test_trap_id_001",
+        sequence=1,
+        latitude=10.0,
+        longitude=20.0,
+        deploy_datetime_utc="2023-01-01T00:00:00Z",
+        retrieved_datetime_utc="2023-01-02T00:00:00Z",
+        status="retrieved",
+    )
 
     datetime_obj = datetime.now(timezone.utc)
     datetime_with_seconds_str = datetime_obj.strftime("%Y-%m-%d %H:%M:%S")
@@ -35,10 +45,16 @@ async def test_trap_convert_to_utc(mock_rmwhub_items):
 
 
 @pytest.mark.asyncio
-async def test_trap_shift_update_time(mock_rmwhub_items):
+async def test_trap_shift_update_time():
     # Setup mock trap
-    mock_trap = mock_rmwhub_items[0].traps[0]
-    mock_trap.status = "deployed"
+    mock_trap = TrapFactory.create(
+        trap_id="test_trap_id_001",
+        sequence=1,
+        latitude=10.0,
+        longitude=20.0,
+        deploy_datetime_utc="2023-01-01T00:00:00Z",
+        status="deployed",
+    )
 
     expected_deployment_time = (
         mock_trap.get_latest_update_time() + timedelta(seconds=5)

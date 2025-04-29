@@ -1,12 +1,9 @@
-import json
 import pytest
 
 from app.actions.configurations import PullRmwHubObservationsConfiguration
-from app.actions.rmwhub import GearSet, Trap
 from gundi_core.schemas.v2 import Connection, ConnectionIntegration
 from gundi_core.schemas import IntegrationInformation
 
-from app.conftest import AsyncMock
 from ropeless_utils import State
 
 
@@ -248,251 +245,6 @@ def get_mock_rmwhub_data():
             },
         ],
     }
-
-
-@pytest.fixture
-def mock_rmwhub_items():
-    return [
-        GearSet(
-            vessel_id="test_vessel_id_0",
-            traps_in_set=2,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_0",
-            deployment_type="trawl",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="test_trap_id_0",
-                    sequence=1,
-                    latitude=-5.19816,
-                    longitude=122.8113,
-                    deploy_datetime_utc="2024-09-25T13:22:32",
-                    surface_datetime_utc="2024-09-25T13:22:32",
-                    retrieved_datetime_utc="2024-09-25T13:23:44",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-                Trap(
-                    id="test_trap_id_1",
-                    sequence=2,
-                    latitude=44.63648713,
-                    longitude=-63.58044069,
-                    deploy_datetime_utc="2024-09-25T13:22:38",
-                    surface_datetime_utc="2024-09-25T13:22:38",
-                    retrieved_datetime_utc="2024-09-25T13:23:44",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-            ],
-        ),
-        GearSet(
-            vessel_id="test_vessel_id_1",
-            traps_in_set=2,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_1",
-            deployment_type="trawl",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="test_trap_id_2",
-                    sequence=1,
-                    latitude=44.3748774,
-                    longitude=-68.1630351,
-                    deploy_datetime_utc="2024-06-10T18:24:46",
-                    surface_datetime_utc="2024-06-10T18:24:46",
-                    retrieved_datetime_utc="2024-11-02T12:53:38",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-                Trap(
-                    id="test_trap_id_3",
-                    sequence=2,
-                    latitude=44.3754398,
-                    longitude=-68.1630321,
-                    deploy_datetime_utc="2024-06-10T18:25:08",
-                    surface_datetime_utc="2024-06-10T18:25:08",
-                    retrieved_datetime_utc="2024-11-02T12:53:38",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-            ],
-        ),
-        GearSet(
-            vessel_id="test_vessel_id_2",
-            traps_in_set=2,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_2",
-            deployment_type="trawl",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="test_trap_id_4",
-                    sequence=1,
-                    latitude=41.4414271,
-                    longitude=-70.9058206,
-                    deploy_datetime_utc="2024-10-09T15:32:39",
-                    surface_datetime_utc="2024-10-09T15:32:39",
-                    retrieved_datetime_utc="2024-10-13T17:06:16",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-                Trap(
-                    id="test_trap_id_5",
-                    sequence=2,
-                    latitude=41.4383309,
-                    longitude=-70.9043825,
-                    deploy_datetime_utc="2024-10-09T15:34:33",
-                    surface_datetime_utc="2024-10-09T15:34:33",
-                    retrieved_datetime_utc="2024-10-13T17:06:16",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-            ],
-        ),
-        GearSet(
-            vessel_id="test_vessel_id_3",
-            traps_in_set=2,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_3",
-            deployment_type="trawl",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="test_trap_id_6",
-                    sequence=1,
-                    latitude=42.0471565,
-                    longitude=-70.6253929,
-                    deploy_datetime_utc="2024-09-15T11:53:29",
-                    surface_datetime_utc="2024-09-15T11:53:29",
-                    retrieved_datetime_utc="2024-09-19T12:11:11",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-                Trap(
-                    id="test_trap_id_7",
-                    sequence=2,
-                    latitude=42.0474643,
-                    longitude=-70.625706,
-                    deploy_datetime_utc="2024-09-15T11:53:43",
-                    surface_datetime_utc="2024-09-15T11:53:43",
-                    retrieved_datetime_utc="2024-09-19T12:11:11",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-            ],
-        ),
-        GearSet(
-            vessel_id="test_vessel_id_4",
-            traps_in_set=1,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_4",
-            deployment_type="single",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="test_trap_id_8",
-                    sequence=1,
-                    latitude=41.4414271,
-                    longitude=-70.9058206,
-                    deploy_datetime_utc="2024-10-09T15:32:39",
-                    surface_datetime_utc="2024-10-09T15:32:39",
-                    retrieved_datetime_utc="2024-10-13T17:06:16",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-            ],
-        ),
-    ]
-
-
-@pytest.fixture
-def mock_rmwhub_items_update():
-    return [
-        GearSet(
-            vessel_id="test_vessel_id_0",
-            traps_in_set=2,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_0",
-            deployment_type="trawl",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="e_100###########################",
-                    sequence=1,
-                    latitude=-5.19816,
-                    longitude=122.8113,
-                    deploy_datetime_utc="2024-09-25T13:22:32",
-                    surface_datetime_utc="2024-09-25T13:22:32",
-                    retrieved_datetime_utc="2024-09-25T13:23:44",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                )
-            ],
-        ),
-        GearSet(
-            vessel_id="test_vessel_id_1",
-            traps_in_set=2,
-            trawl_path=None,
-            share_with=["Earth_Ranger"],
-            id="test_set_id_1",
-            deployment_type="trawl",
-            when_updated_utc="2025-03-14T16:38:12Z",
-            traps=[
-                Trap(
-                    id="test_trap_id_1",
-                    sequence=1,
-                    latitude=44.3748774,
-                    longitude=-68.1630351,
-                    deploy_datetime_utc="2024-06-10T18:24:46",
-                    surface_datetime_utc="2024-06-10T18:24:46",
-                    retrieved_datetime_utc="2024-11-02T12:53:38",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-                Trap(
-                    id="test_trap_id_2",
-                    sequence=2,
-                    latitude=44.3754398,
-                    longitude=-68.1630321,
-                    deploy_datetime_utc="2024-06-10T18:25:08",
-                    surface_datetime_utc="2024-06-10T18:25:08",
-                    retrieved_datetime_utc="2024-11-02T12:53:38",
-                    status="retrieved",
-                    accuracy="gps",
-                    release_type="timed",
-                    is_on_end=True,
-                ),
-            ],
-        ),
-    ]
 
 
 @pytest.fixture
@@ -843,18 +595,19 @@ def mock_er_subjects():
         },
     ]
 
+
 @pytest.fixture
 def mock_get_latest_observations_with_duplicates():
-    return [{
-        'id': '081bfce1-e977-46ad-b948-aa90c9283304',
-        'location': {"latitude": 20.624751, "longitude": -105.310673},
-        'created_at': '2025-01-28T14:51:02.996570-08:00',
-        'recorded_at': '2025-01-26T03:20:57+00:00',
-        'source': 'random-string',
-        'exclusion_flags': 0,
-        'observation_details':
-            {
-                'devices': [
+    return [
+        {
+            "id": "081bfce1-e977-46ad-b948-aa90c9283304",
+            "location": {"latitude": 20.624751, "longitude": -105.310673},
+            "created_at": "2025-01-28T14:51:02.996570-08:00",
+            "recorded_at": "2025-01-26T03:20:57+00:00",
+            "source": "random-string",
+            "exclusion_flags": 0,
+            "observation_details": {
+                "devices": [
                     {
                         "label": "a",
                         "location": {"latitude": 20.629892, "longitude": -105.318998},
@@ -868,100 +621,122 @@ def mock_get_latest_observations_with_duplicates():
                         "last_updated": "2025-01-25T13:22:32+00:00",
                     },
                 ],
-                'display_id': '84f360b0a8a5',
-                'event_type': 'gear_deployed',
-                'subject_is_active': True
-            }
-    }]
-    
+                "display_id": "84f360b0a8a5",
+                "event_type": "gear_deployed",
+                "subject_is_active": True,
+            },
+        }
+    ]
+
+
 @pytest.fixture
 def mock_get_latest_observations():
     """
     Fixture that simulates the behavior of get_latest_observations.
     """
+
     async def _get_latest_observations(self, subject_id: str, page_size: int):
         # You can ignore page_size for this fake implementation
         if subject_id == "0302a774-1971-4a64-8264-1d7f17969442":
-            return [{
-                'id': '0302a774-1971-4a64-8264-1d7f17969442',
-                'location': {'latitude': 42.6762, 'longitude': -70.6255043},
-                'created_at': '2025-01-26T03:20:57+00:00',
-                'recorded_at': '2025-04-20T14:51:02.996570-08:00',
-                'source': 'random-string',
-                'exclusion_flags': 0,
-                'observation_details':
-                    {
-                        'devices': [
+            return [
+                {
+                    "id": "0302a774-1971-4a64-8264-1d7f17969442",
+                    "location": {"latitude": 42.6762, "longitude": -70.6255043},
+                    "created_at": "2025-01-26T03:20:57+00:00",
+                    "recorded_at": "2025-04-20T14:51:02.996570-08:00",
+                    "source": "random-string",
+                    "exclusion_flags": 0,
+                    "observation_details": {
+                        "devices": [
                             {
                                 "label": "a",
-                                "location": {"latitude": 42.6762, "longitude": -70.6255043},
+                                "location": {
+                                    "latitude": 42.6762,
+                                    "longitude": -70.6255043,
+                                },
                                 "device_id": "100",
                                 "last_updated": "2025-01-26T03:20:57+00:00",
                             }
                         ],
-                        'display_id': '30548f5def46',
-                        'event_type': 'gear_position_rmwhub',
-                        'subject_is_active': True
-                    }
-                }]
+                        "display_id": "30548f5def46",
+                        "event_type": "gear_position_rmwhub",
+                        "subject_is_active": True,
+                    },
+                }
+            ]
         elif subject_id == "081bfce1-e977-46ad-b948-aa90c9283304":
-            return [{
-                'id': '081bfce1-e977-46ad-b948-aa90c9283304',
-                'location': {"latitude": 20.624751, "longitude": -105.310673},
-                'created_at': '2025-01-28T14:51:02.996570-08:00',
-                'recorded_at': '2025-01-26T03:20:57+00:00',
-                'source': 'random-string',
-                'exclusion_flags': 0,
-                'observation_details':
-                    {
-                        'devices': [
+            return [
+                {
+                    "id": "081bfce1-e977-46ad-b948-aa90c9283304",
+                    "location": {"latitude": 20.624751, "longitude": -105.310673},
+                    "created_at": "2025-01-28T14:51:02.996570-08:00",
+                    "recorded_at": "2025-01-26T03:20:57+00:00",
+                    "source": "random-string",
+                    "exclusion_flags": 0,
+                    "observation_details": {
+                        "devices": [
                             {
                                 "label": "a",
-                                "location": {"latitude": 20.629892, "longitude": -105.318998},
+                                "location": {
+                                    "latitude": 20.629892,
+                                    "longitude": -105.318998,
+                                },
                                 "device_id": "F6528E48-39B9-49A8-8F24-0023CF5EE3D7",
                                 "last_updated": "2025-01-25T13:22:32+00:00",
                             },
                             {
                                 "label": "b",
-                                "location": {"latitude": 20.624751, "longitude": -105.310673},
+                                "location": {
+                                    "latitude": 20.624751,
+                                    "longitude": -105.310673,
+                                },
                                 "device_id": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
                                 "last_updated": "2025-01-25T13:22:32+00:00",
                             },
                         ],
-                        'display_id': '84f360b0a8a5',
-                        'event_type': 'gear_deployed',
-                        'subject_is_active': True
-                    }
-                }]
+                        "display_id": "84f360b0a8a5",
+                        "event_type": "gear_deployed",
+                        "subject_is_active": True,
+                    },
+                }
+            ]
         elif subject_id == "0931ddaa-770c-4bb4-9d66-b8106c17e043":
-            return [{
-                'id': '0931ddaa-770c-4bb4-9d66-b8106c17e043',
-                'location': {"latitude": 42.6762032, "longitude": -70.6253728},
-                'created_at': '2025-01-28T14:51:02.996570-08:00',
-                'recorded_at': '2025-04-26T03:20:57+00:00',
-                'source': 'random-string',
-                'exclusion_flags': 0,
-                'observation_details':
-                    {
-                        'devices': [
+            return [
+                {
+                    "id": "0931ddaa-770c-4bb4-9d66-b8106c17e043",
+                    "location": {"latitude": 42.6762032, "longitude": -70.6253728},
+                    "created_at": "2025-01-28T14:51:02.996570-08:00",
+                    "recorded_at": "2025-04-26T03:20:57+00:00",
+                    "source": "random-string",
+                    "exclusion_flags": 0,
+                    "observation_details": {
+                        "devices": [
                             {
                                 "label": "a",
-                                "location": {"latitude": 20.629892, "longitude": -105.318998},
+                                "location": {
+                                    "latitude": 20.629892,
+                                    "longitude": -105.318998,
+                                },
                                 "device_id": "F6528E48-39B9-49A8-8F24-0023CF5EE3D7",
                                 "last_updated": "2025-01-25T13:22:32+00:00",
                             },
                             {
                                 "label": "b",
-                                "location": {"latitude": 20.624751, "longitude": -105.310673},
+                                "location": {
+                                    "latitude": 20.624751,
+                                    "longitude": -105.310673,
+                                },
                                 "device_id": "BB1ABEBC-13BF-4110-A4A3-DE6C4F7022D4",
                                 "last_updated": "2025-01-25T13:22:32+00:00",
                             },
                         ],
-                        'display_id': '71be27a7ed7e',
-                        'event_type': 'gear_position_rmwhub',
-                        'subject_is_active': True
-                    }
-                }]
+                        "display_id": "71be27a7ed7e",
+                        "event_type": "gear_position_rmwhub",
+                        "subject_is_active": True,
+                    },
+                }
+            ]
+
     return _get_latest_observations
 
 
