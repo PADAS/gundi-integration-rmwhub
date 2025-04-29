@@ -19,14 +19,13 @@ async def test_trap_create_observations_force_create():
                 longitude=20.0,
                 deploy_datetime_utc="2023-01-01T00:00:00Z",
                 retrieved_datetime_utc="2023-01-02T00:00:00Z",
-                status="retrieved",
+                status="deployed",
             )
             for i in range(1, num_traps + 1)
         ],
     )
     mock_gear.deployment_type = "trawl"
     mock_trap = mock_gear.traps[0]
-    mock_trap.status = "deployed"
 
     subject_name = "rmwhub_" + mock_trap.id
     devices = [

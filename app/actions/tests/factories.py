@@ -151,7 +151,7 @@ class GearsetFactory:
 class SubjectFactory:
     def create(
         id: str = "test_subject_id_001",
-        name: str = "test_subject_name_001",
+        name: Optional[str] = None,
         latitude: float = 40.0,
         longitude: float = -70.0,
         last_updated: str = "2025-01-30T00:00:00Z",
@@ -161,6 +161,8 @@ class SubjectFactory:
         """
         Factory method to create a Subject dictionary.
         """
+        if not name:
+            name = "test_subject_name_001" + str(random.randint(100, 999))
         return {
             "content_type": "observations.subject",
             "id": id,
