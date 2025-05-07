@@ -19,6 +19,9 @@ class BuoyClient:
         self.er_site = er_site
 
     # TODO: Validate include details works as expected
+    
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def get_er_subjects(self, start_datetime: datetime = None) -> List:
 
         updated_since = start_datetime
@@ -42,7 +45,8 @@ class BuoyClient:
 
         return []
 
-    @stamina.retry(on=httpx.HTTPError, attempts = 5, timeout = timedelta(seconds = 10))
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def get_latest_observations(self, subject_id: str, page_size: int) -> dict:
         """
         Get the latest observations for a subject. Return only the latest observation when page_size = 1.
@@ -76,6 +80,8 @@ class BuoyClient:
 
         return []
 
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def get_gear(self) -> List:
         """
         Get all gear
@@ -99,6 +105,8 @@ class BuoyClient:
 
         return []
 
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def get_er_subject_by_name(self, name: str) -> dict:
 
         url = (
@@ -124,6 +132,8 @@ class BuoyClient:
 
         return []
 
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def patch_er_subject_status(self, er_subject_name: str, state: bool):
         """
         Update the state of a subject by either the subject ID or the subject name
@@ -153,6 +163,8 @@ class BuoyClient:
             f"Successfully updated subject state for {er_subject_name} to {state}"
         )
 
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def get_source_provider(self, er_subject_id: str) -> str:
         """
         Get the source provider for a subject
@@ -178,6 +190,8 @@ class BuoyClient:
 
         return {}
 
+    @stamina.retry(on=httpx.HTTPError, attempts = 5)
+    @stamina.retry(on=httpx.ReadTimeout, attempts = 5)
     async def create_v1_observation(
         self, source_provider: str, observation: dict
     ) -> dict:

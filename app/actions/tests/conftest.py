@@ -326,6 +326,31 @@ def mock_get_latest_observations_with_duplicates():
         }
     ]
 
+@pytest.fixture
+def mock_get_latest_observations_single_trap():
+    return [
+        {
+            "id": "081bfce1-e977-46ad-b948-aa90c9283304",
+            "location": {"latitude": 20.624751, "longitude": -105.310673},
+            "created_at": "2025-01-28T14:51:02.996570-08:00",
+            "recorded_at": "2025-01-26T03:20:57+00:00",
+            "source": "random-string",
+            "exclusion_flags": 0,
+            "observation_details": {
+                "devices": [
+                    {
+                        "label": "Some Trap",
+                        "location": {"latitude": 20.629892, "longitude": -105.318998},
+                        "device_id": "trap_a",
+                        "last_updated": "2025-01-25T13:22:32+00:00",
+                    }
+                ],
+                "display_id": "84f360b0a8a5",
+                "event_type": "gear_deployed",
+                "subject_is_active": True,
+            },
+        }
+    ]
 
 @pytest.fixture
 def mock_get_latest_observations():

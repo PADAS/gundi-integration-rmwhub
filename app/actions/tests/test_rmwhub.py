@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from unittest.mock import AsyncMock
 import pytest
@@ -505,11 +505,11 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
 
 
 @pytest.mark.asyncio
-async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
+async def test_rmwhub_adapter_handle_partial_trawl(
     mocker,
     a_good_integration,
     a_good_configuration,
-    mock_get_latest_observations_with_duplicates,
+    mock_get_latest_observations_single_trap,
 ):
     rmw_adapter = RmwHubAdapter(
         a_good_integration.id,
@@ -523,12 +523,9 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     mocker.patch("app.actions.rmwhub.log_action_activity", mock_log_activity)
 
     # Test handle ER upload success with updates
-    num_subjects = 4
-    data = [
-        SubjectFactory.create(
-            name="test_subject_00" + str(i),
+    data = [SubjectFactory.create(
+            name="trap_a"
         )
-        for i in range(1, num_subjects + 1)
     ]
     mocker.patch(
         "app.actions.buoy.BuoyClient.get_er_subjects",
@@ -536,46 +533,52 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     )
     mocker.patch(
         "app.actions.buoy.BuoyClient.get_latest_observations",
-        return_value=mock_get_latest_observations_with_duplicates,
+        return_value=mock_get_latest_observations_single_trap,
     )
 
-    num_traps = 1
-    mock_er_gearset = GearsetFactory.create(
-        traps_in_set=num_traps,
-        set_id="e_test_set_id_001",
-        traps=[
-            TrapFactory.create(
-                trap_id="e_100###########################",
-                sequence=i,
-                latitude=10.0,
-                longitude=20.0,
-                deploy_datetime_utc="2023-01-01T00:00:00Z",
-                status="retrieved",
-            )
-            for i in range(1, num_traps + 1)
-        ],
-    )
-    num_traps = 2
     mock_search_own_response = [
         GearsetFactory.create(
-            traps_in_set=num_traps,
-            set_id="test_set_id_00" + str(j),
+            traps_in_set=1,
+            set_id="test_set_id_1",
+            when_updated_utc = "2023-01-01T00:00:00Z",
             traps=[
                 TrapFactory.create(
-                    trap_id="test_trap_id_0" + str(j) + str(i),
-                    sequence=i,
+                    trap_id='e_trap_a########################',
+                    sequence=1,
                     latitude=10.0,
                     longitude=20.0,
                     deploy_datetime_utc="2023-01-01T00:00:00Z",
                     retrieved_datetime_utc="2023-01-02T00:00:00Z",
                     status="retrieved",
                 )
-                for i in range(1, num_traps + 1)
             ],
-        )
-        for j in range(2)
+        ),
+        GearsetFactory.create(
+            traps_in_set=2,
+            set_id="test_set_id_2",
+            when_updated_utc = "2023-01-01T00:00:00Z",
+            traps=[
+                TrapFactory.create(
+                    trap_id='e_trap_a########################',
+                    sequence=1,
+                    latitude=10.0,
+                    longitude=20.0,
+                    deploy_datetime_utc="2023-01-01T00:00:00Z",
+                    retrieved_datetime_utc="2023-01-02T00:00:00Z",
+                    status="deployed",
+                ),
+                TrapFactory.create(
+                    trap_id='e_trap_b########################',
+                    sequence=1,
+                    latitude=11.0,
+                    longitude=21.0,
+                    deploy_datetime_utc="2023-01-01T00:00:00Z",
+                    retrieved_datetime_utc="2023-01-02T00:00:00Z",
+                    status="retrieved",
+                )
+            ],
+        )   
     ]
-    mock_search_own_response.append(mock_er_gearset)
     mocker.patch(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
         return_value=mock_search_own_response,
@@ -584,4 +587,13 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     uploadMock = AsyncMock()
     mocker.patch("app.actions.rmwhub.RmwHubAdapter._upload_data", uploadMock)
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
-    assert observations == 2
+    assert uploadMock.call_count == 1
+    uploaded = list(uploadMock.call_args.args[0])
+    assert(len(uploaded) == 2)
+    assert(uploaded[0].deployment_type == 'single')
+    assert(uploaded[0].traps[0].status == 'deployed')
+    assert(uploaded[1].deployment_type == 'trawl')
+    assert(uploaded[1].traps[0].id == 'e_trap_a########################' and
+           uploaded[1].traps[0].status == "retrieved")
+    assert(uploaded[1].traps[1].id == 'e_trap_b########################' and
+           uploaded[1].traps[1].status == "retrieved")

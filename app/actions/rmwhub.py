@@ -299,7 +299,7 @@ class RmwHubAdapter:
     @backoff.on_exception(
         backoff.expo, (httpx.ReadTimeout, httpx.ConnectTimeout), max_tries=5
     )
-    async def _get_newest_set_from_rmwhub(self, devices):
+    async def _get_newest_set_from_rmwhub(self, subject, devices):
         """
         Downloads data from the RMW Hub API using the search_own endpoint.
         ref: https://ropeless.network/api/docs#/Download
@@ -308,11 +308,13 @@ class RmwHubAdapter:
         if not devices:
             return None
 
+        target_device = await RmwHubAdapter._er_to_rmw_trap_id(subject['name'])
         target_traps = await self._generate_trap_list(devices)
         sets = await self.search_own(trap_id = target_traps[0], status = "deployed")
 
         newest = None
         newestDate = None
+        all_matches = []
         for gearset in sets:
             set_traps = sorted([trap.id for trap in gearset.traps])
             if set_traps == target_traps:
@@ -320,8 +322,17 @@ class RmwHubAdapter:
                 if not newestDate or (datecomp > newestDate):
                     newest = gearset
                     newestDate = datecomp
+            for trap in gearset.traps:
+                if(trap.id == target_device):
+                    all_matches.append(gearset)
+                    break
 
-        return newest
+        other_matches = []
+        for match in all_matches:
+            if(match != newest):
+                other_matches.append(match)
+
+        return newest, other_matches
 
     async def search_own(self, trap_id=None, status = None) -> dict:
         """
@@ -520,19 +531,22 @@ class RmwHubAdapter:
 
         return display_id_hash
 
+    @staticmethod
+    async def _er_to_rmw_trap_id(device_id):
+        return RmwHubAdapter.validate_id_length("e_" + RmwHubAdapter.clean_id_str(device_id))
+
     async def _generate_trap_list(self, devices):
         """
         Generates a list of rmwHub trap IDs from a list of devices referenced in ER for the sake of matching
         """
-        return sorted(
-            [
-                self.validate_id_length("e_" + self.clean_id_str(device["device_id"]))
-                for device in devices
+        return sorted([
+                await RmwHubAdapter._er_to_rmw_trap_id(device['device_id']) for device in devices
             ]
         )
 
     # Trap IDs must be atleast 32 characters and no more than 38 characters
-    def validate_id_length(self, id_str: str):
+    @staticmethod
+    def validate_id_length(id_str: str):
         return id_str.ljust(32, "#")
 
     async def process_upload(self, start_datetime: datetime) -> Tuple[List, dict]:
@@ -544,7 +558,8 @@ class RmwHubAdapter:
         logger.info("Processing updates to RMW Hub from ER...")
 
         # Normalize the extracted data into a list of updates following to the RMWHub schema:
-        updates = []
+        updates = {}
+        other_sets = {}
         existing_updates = []
 
         # Get updates from the last interval_minutes in ER
@@ -600,8 +615,13 @@ class RmwHubAdapter:
                 )
                 continue
 
+            # Make sure we don't deploy a trawl of trap_a - trap_b and trap_b - trap_a as two trawls
+            trap_list = await self._generate_trap_list(devices)
+            if trap_list in existing_updates:
+                continue
+
             try:
-                rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
+                rmwhub_set, other_sets_with_device = await self._get_newest_set_from_rmwhub(subject, devices)
             except httpx.ReadTimeout as e:
                 logger.error(
                     f"Error reading from RMW Hub while getting newest set for Subject {subject_name}: {e}"
@@ -615,32 +635,33 @@ class RmwHubAdapter:
                 failed_subjects += 1
                 continue
 
-            trap_list = await self._generate_trap_list(devices)
-            if trap_list in existing_updates:
-                continue
+            # If the latest observation shows this gear as hauled, haul any trawls in RMW that contain the same gear which are not yet hauled.
+            for other_set in other_sets_with_device:
+                if(other_set.id not in other_sets):
+                    for trap in other_set.traps:
+                        if(trap.status == 'deployed'):
+                            newset = await self._create_rmw_update_to_haul_existing_set(other_set, subject)
+                            other_sets[newset.id] = newset
+                            break
 
-            rmwhub_set = await self._get_newest_set_from_rmwhub(devices)
-
-            if rmwhub_set and (
-                parse_date(rmwhub_set.when_updated_utc)
-                > parse_date(latest_observation["created_at"])
-            ):
-                continue
-
-            new_gearset = await self._create_rmw_update_from_er_subject(
-                subject, latest_observation, rmwhub_set
-            )
-            if new_gearset:
-                updates.append(new_gearset)
-                existing_updates.append(trap_list)
+            # If not deployed to RMW or RMW deployment is older than current ER data, include it in list of things to update
+            if not rmwhub_set or (parse_date(rmwhub_set.when_updated_utc) < parse_date(latest_observation["created_at"])):
+                new_gearset = await self._create_rmw_update_from_er_subject(subject, latest_observation, rmwhub_set)
+                if new_gearset:
+                    existing_updates.append(trap_list)
+                    updates[new_gearset.id] = new_gearset
+                
+        for other_set in other_sets.values():
+            if(other_set.id not in updates):
+                updates[other_set.id] = other_set
 
         if not updates:
             logger.info("No updates to upload to RMW Hub API.")
             return 0, {"trap_count": 0}
 
-        response = await self._upload_data(updates)
+        response = await self._upload_data(updates.values())
         num_new_observations = len(
-            [trap.id for gearset in updates for trap in gearset.traps]
+            [trap.id for gearset in updates.values() for trap in gearset.traps]
         )
 
         if failed_subjects:
@@ -844,6 +865,14 @@ class RmwHubAdapter:
 
         return {}
 
+    async def _create_rmw_update_to_haul_existing_set(self, rmw_gearset: GearSet, subject_to_haul: dict) -> GearSet:
+        newtraps = []
+        for trap in rmw_gearset.traps:
+            trap.status = "retrieved"
+            newtraps.append(trap)
+        rmw_gearset.traps = newtraps
+        return rmw_gearset
+
     async def _create_rmw_update_from_er_subject(
         self,
         er_subject: dict,
@@ -886,6 +915,7 @@ class RmwHubAdapter:
         for device in devices:
             # Use just the ID for the Trap ID if the gearset is originally from RMW
             subject_name = er_subject.get("name")
+
             device_name = device.get("device_id")
             cleaned_id = RmwHubAdapter.clean_id_str(device_name)
             trap_id = (
@@ -918,7 +948,7 @@ class RmwHubAdapter:
             )
             traps.append(
                 Trap(
-                    id=self.validate_id_length(trap_id),
+                    id=RmwHubAdapter.validate_id_length(trap_id),
                     sequence=1 if device.get("label") == "a" else 2,
                     latitude=device.get("location").get("latitude"),
                     longitude=device.get("location").get("longitude"),
