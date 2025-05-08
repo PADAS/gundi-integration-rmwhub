@@ -636,7 +636,7 @@ class RmwHubAdapter:
             logger.info("No updates to upload to RMW Hub API.")
             return 0, {"trap_count": 0}
         logger.info(f"Sending {len(updates)} updates to RMW Hub.")
-        
+
         response = await self._upload_data(updates)
         num_new_observations = len(
             [trap.id for gearset in updates for trap in gearset.traps]
@@ -846,7 +846,7 @@ class RmwHubAdapter:
     async def _create_rmw_update_from_er_subject(
         self,
         er_subject: dict,
-        latest_observation: dict = None,
+        latest_observation: dict,
         rmw_gearset: GearSet = None,
     ) -> Optional[GearSet]:
         """
@@ -857,54 +857,36 @@ class RmwHubAdapter:
         :param latest_observation: Latest observation for the subject (not required for new inserts)
         """
 
-        # Create traps list:
-        traps = []
-        if not er_subject.get("additional") or not er_subject.get("additional").get(
-            "devices"
-        ):
-            logger.error(f"No traps found for trap ID {er_subject.get('name')}.")
-            return None
+        deployed = ((latest_observation.get('observation_details', {}).get('event_type') == 'gear_deployed') if latest_observation 
+                    else er_subject.get('is_active'))
 
-        deployed = er_subject.get("is_active")
-        additional_data = er_subject.get("additional", {})
-
-        trap_id_mapping = (
-            {RmwHubAdapter.clean_id_str(trap.id): trap for trap in rmw_gearset.traps}
-            if rmw_gearset
+        devices = (latest_observation.get("observation_details", {}).get("devices") if latest_observation
+            else er_subject.get("additional", {}).get("devices")
+        )
+        latest_observation_datetime = (latest_observation.get("recorded_at") if latest_observation
+            else None
+        )
+        trap_id_mapping = ({RmwHubAdapter.clean_id_str(trap.id): trap for trap in rmw_gearset.traps} if rmw_gearset
             else {}
         )
 
-        devices = (
-            latest_observation.get("observation_details", {}).get("devices")
-            if latest_observation
-            else additional_data.get("devices")
-        )
-        latest_observation_datetime = (
-            latest_observation.get("recorded_at") if latest_observation else None
-        )
+        traps = []
         for device in devices:
             # Use just the ID for the Trap ID if the gearset is originally from RMW
             subject_name = er_subject.get("name")
             device_name = device.get("device_id")
             cleaned_id = RmwHubAdapter.clean_id_str(device_name)
-            trap_id = (
-                cleaned_id
-                if rmw_gearset and subject_name.startswith("rmw")
-                else "e_" + cleaned_id
-            )
+            trap_id = (cleaned_id if rmw_gearset and subject_name.startswith("rmw")
+                else "e_" + cleaned_id)
 
             if not deployed and not rmw_gearset:
                 logger.debug(f"This trap ({trap_id}) is not being deployed and still does not exist in RMW Hub, skipping.")
                 continue
 
-            rmw_trap_datetime = (
-                latest_observation_datetime
-                if latest_observation
+            rmw_trap_datetime = (latest_observation_datetime if latest_observation
                 else device.get("last_updated")
             )
-            rmw_trap_datetime = (
-                self.convert_datetime_to_utc(rmw_trap_datetime)
-                if rmw_trap_datetime
+            rmw_trap_datetime = (self.convert_datetime_to_utc(rmw_trap_datetime) if rmw_trap_datetime
                 else None
             )
             # deploy_datetime_utc is required, so in retrieve events, we will use the current deployed datetime

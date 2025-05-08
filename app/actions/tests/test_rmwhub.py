@@ -469,9 +469,9 @@ async def test_rmwhub_adapter_create_rmw_update_from_simple_er_trawl(
     )
 
     # Test create INSERT update (no existing rmwHub gearset)
-    gearset_insert = await rmwadapter._create_rmw_update_from_er_subject(
-        SubjectFactory.create(),
-    )
+    subject = SubjectFactory.create()
+    latest_observation = SubjectFactory.create_latest_observation(subject['id'])[0]
+    gearset_insert = await rmwadapter._create_rmw_update_from_er_subject(subject, latest_observation)
 
     assert gearset_insert
     assert gearset_insert.traps[0].id
@@ -495,8 +495,9 @@ async def test_rmwhub_adapter_create_rmw_update_from_simple_er_trawl(
             for i in range(1, num_traps + 1)
         ],
     )
-    gearset_update = await rmwadapter._create_rmw_update_from_er_subject(
-        SubjectFactory.create(), rmw_gearset=mock_rmwhub_gearset
+    subject = SubjectFactory.create()
+    latest_observation = SubjectFactory.create_latest_observation(subject['id'])[0]
+    gearset_update = await rmwadapter._create_rmw_update_from_er_subject(er_subject = subject, latest_observation = latest_observation, rmw_gearset=mock_rmwhub_gearset
     )
 
     assert gearset_update
