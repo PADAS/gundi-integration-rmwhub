@@ -449,7 +449,7 @@ async def test_rmwhub_adapter_process_upload_failure(
 
 
 @pytest.mark.asyncio
-async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
+async def test_rmwhub_adapter_create_rmw_update_from_simple_er_trawl(
     mocker,
     a_good_integration,
     a_good_configuration,
