@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 from unittest.mock import AsyncMock
+from app.actions.buoy import BuoyClient
 import pytest
 import pytz
 
@@ -46,8 +47,9 @@ async def test_rmw_adapter_process_download(
     """
 
     # Setup mock_rmwhub_client
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+    mocker.patch.object(
+        BuoyClient,
+        "get_er_subjects",
         return_value=[],
     )
 
@@ -91,6 +93,7 @@ async def test_rmw_adapter_process_download(
         rmw_sets, start_datetime, minute_interval
     )
 
+    BuoyClient.get_er_subjects.assert_called_once_with(start_datetime=start_datetime)
     assert len(observations) == num_gearsets * num_traps
 
 
