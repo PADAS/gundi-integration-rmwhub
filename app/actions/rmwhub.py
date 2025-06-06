@@ -401,7 +401,7 @@ class RmwHubAdapter:
 
         # Download Data from ER for the same time interval as RmwHub
         # TODO: Only download recent updates from ER
-        er_subjects = await self.er_client.get_er_subjects()
+        er_subjects = await self.er_client.get_er_subjects(start_datetime=start_datetime)
 
         # Create maps of er_subject_names and rmw_trap_ids/set_ids
         # RMW trap IDs would be in the subject name
