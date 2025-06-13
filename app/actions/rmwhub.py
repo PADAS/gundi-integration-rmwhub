@@ -107,7 +107,7 @@ class GearSet(BaseModel):
     vessel_id: str
     id: str
     deployment_type: str
-    traps_in_set: int
+    traps_in_set: Optional[int]
     trawl_path: str
     share_with: Optional[List[str]]
     traps: List[Trap]
@@ -378,7 +378,7 @@ class RmwHubAdapter:
                 vessel_id=set["vessel_id"],
                 id=set["set_id"],
                 deployment_type=set["deployment_type"],
-                traps_in_set=set["traps_in_set"],
+                traps_in_set=set.get("traps_in_set"),
                 trawl_path=set["trawl_path"],
                 share_with=set.get("share_with", []),
                 when_updated_utc=set["when_updated_utc"],
