@@ -399,11 +399,9 @@ class RmwHubAdapter:
         # Normalize the extracted data into a list of observations following to the Gundi schema:
         observations = []
 
-        rmw_inserts = set()
         for gearset in rmw_sets:
-            for trap in gearset.traps:
-                new_observations = await self._create_observations(gearset)
-                observations.extend(new_observations)
+            new_observations = await self._create_observations(gearset)
+            observations.extend(new_observations)
 
         return observations
 
