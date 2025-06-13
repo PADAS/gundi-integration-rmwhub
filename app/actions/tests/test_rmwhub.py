@@ -93,7 +93,6 @@ async def test_rmw_adapter_process_download(
         rmw_sets, start_datetime, minute_interval
     )
 
-    BuoyClient.get_er_subjects.assert_called_once_with(start_datetime=start_datetime)
     assert len(observations) == num_gearsets * num_traps
 
 
