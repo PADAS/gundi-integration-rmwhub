@@ -165,10 +165,7 @@ async def action_pull_observations(
             )
 
         # Patch subject status
-        # TODO: Remove when status workaround fix verified in Earthranger.
-        await rmw_adapter.push_status_updates(
-            observations=observations, rmw_sets=rmwSets
-        )
+        await rmw_adapter.sync_subject_statuses(since = start_datetime)
 
     # The result will be recorded in the portal if using the activity_logger decorator
     num_total_observations = len(total_observations) + num_put_set_id_observations

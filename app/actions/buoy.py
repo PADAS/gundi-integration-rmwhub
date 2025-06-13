@@ -19,12 +19,12 @@ class BuoyClient:
         self.er_site = er_site
 
     # TODO: Validate include details works as expected
-    async def get_er_subjects(self, start_datetime: datetime = None) -> List:
+    async def get_er_subjects(self, start_datetime: datetime = None, criteria="position_updated_since") -> List:
 
         updated_since = start_datetime
         url = self.er_site + f"/subjects/?include_details=True&include_inactive=True"
         if updated_since:
-            url += f"&position_updated_since={updated_since.isoformat()}"
+            url += f"&{criteria}={updated_since.isoformat()}"
         BuoyClient.headers["Authorization"] = f"Bearer {self.er_token}"
 
         async with httpx.AsyncClient() as client:
@@ -124,20 +124,13 @@ class BuoyClient:
 
         return []
 
-    async def patch_er_subject_status(self, er_subject_name: str, state: bool):
+    async def patch_er_subject_status(self, subject, state: bool):
         """
         Update the state of a subject by either the subject ID or the subject name
         """
 
-        subject = await self.get_er_subject_by_name(er_subject_name)
-        subject = subject[0] if subject else None
-        if not subject:
-            logger.error(f"Subject with name {er_subject_name} not found")
-            return
-
         BuoyClient.headers["Authorization"] = f"Bearer {self.er_token}"
         url = self.er_site + f"/subject/{subject.get('id')}/"
-
         dict = {"is_active": state}
 
         async with httpx.AsyncClient() as client:
@@ -146,11 +139,11 @@ class BuoyClient:
         if response.status_code != 200:
             logger.exception(
                 "Failed to update subject state for %s. Error: %s",
-                er_subject_name,
+                subject['name'],
                 response.text,
             )
         logger.info(
-            f"Successfully updated subject state for {er_subject_name} to {state}"
+            f"Successfully updated subject state for {subject['name']} to {state}"
         )
 
     async def get_source_provider(self, er_subject_id: str) -> str:
