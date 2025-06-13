@@ -104,65 +104,57 @@ async def action_pull_observations(
         )
 
         observations = []
-        try:
-            if len(rmwSets) != 0:
-                logger.info(
-                    f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets)}"
-                )
-                observations = await rmw_adapter.process_download(
-                    rmwSets, start_datetime, sync_interval_minutes
-                )
-                total_observations.extend(observations)
-            else:
-                await log_action_activity(
-                    integration_id=integration.id,
-                    action_id="pull_observations",
-                    level=LogLevel.INFO,
-                    title="No gearsets returned from RMW Hub API.",
-                    data={
-                        "start_date_time": start_datetime.isoformat(),
-                        "end_date_time": end_datetime.isoformat(),
-                        "environment": str(environment),
-                    },
-                    config_data=action_config.dict(),
-                )
-        except ValueError as e:
-            logger.error(f"Failed to process RMW Hub data: {str(e)}")
+        if len(rmwSets) != 0:
+            logger.info(
+                f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets)}"
+            )
+            observations = await rmw_adapter.process_download(
+                rmwSets, start_datetime, sync_interval_minutes
+            )
+            total_observations.extend(observations)
+        else:
+            await log_action_activity(
+                integration_id=integration.id,
+                action_id="pull_observations",
+                level=LogLevel.INFO,
+                title="No gearsets returned from RMW Hub API.",
+                data={
+                    "start_date_time": start_datetime.isoformat(),
+                    "end_date_time": end_datetime.isoformat(),
+                    "environment": str(environment),
+                },
+                config_data=action_config.dict(),
+            )
 
         # Upload changes from ER to RMW Hub
         rmw_response = {}
-        try:
-            (
-                num_put_set_id_observations,
-                rmw_response,
-            ) = await rmw_adapter.process_upload(start_datetime)
+        (
+            num_put_set_id_observations,
+            rmw_response,
+        ) = await rmw_adapter.process_upload(start_datetime)
 
-            if rmw_response and "detail" in rmw_response:
-                await log_action_activity(
-                    integration_id=integration.id,
-                    action_id="pull_observations",
-                    level=LogLevel.ERROR,
-                    title="Failed to upload data to rmwHub.",
-                    data={
-                        "rmw_response": str(rmw_response),
-                    },
-                    config_data=action_config.dict(),
-                )
-            else:
-                await log_action_activity(
-                    integration_id=integration.id,
-                    action_id="pull_observations",
-                    level=LogLevel.INFO,
-                    title="Process upload to rmwHub completed.",
-                    data={
-                        "rmw_response": str(rmw_response),
-                    },
-                    config_data=action_config.dict(),
-                )
-        except ValueError as e:
-            logger.error(f"Failed to upload changes to RMW Hub: {str(e)}")
-            num_put_set_id_observations = 0
-            rmw_response = {}
+        if rmw_response and "detail" in rmw_response:
+            await log_action_activity(
+                integration_id=integration.id,
+                action_id="pull_observations",
+                level=LogLevel.ERROR,
+                title="Failed to upload data to rmwHub.",
+                data={
+                    "rmw_response": str(rmw_response),
+                },
+                config_data=action_config.dict(),
+            )
+        else:
+            await log_action_activity(
+                integration_id=integration.id,
+                action_id="pull_observations",
+                level=LogLevel.INFO,
+                title="Process upload to rmwHub completed.",
+                data={
+                    "rmw_response": str(rmw_response),
+                },
+                config_data=action_config.dict(),
+            )
 
 
         # Send the extracted data to Gundi in batches
