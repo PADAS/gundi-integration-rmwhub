@@ -30,3 +30,8 @@ class PullRmwHubObservationsConfiguration(PullActionConfiguration):
         description="Value to use for the \"share_with\" field when sharing data with rmwHUB.",
         default=""
     )
+    minutes_to_sync: int = pydantic.Field(
+        title="Minutes to Sync",
+        description = "Number of minutes of data to pull from RMW Hub",
+        default = 30
+    )
