@@ -399,104 +399,11 @@ class RmwHubAdapter:
         # Normalize the extracted data into a list of observations following to the Gundi schema:
         observations = []
 
-        # Download Data from ER for the same time interval as RmwHub
-        # TODO: Only download recent updates from ER
-        er_subjects = await self.er_client.get_er_subjects(start_datetime=start_datetime)
-
-        # Create maps of er_subject_names and rmw_trap_ids/set_ids
-        # RMW trap IDs would be in the subject name
-        self.er_subject_name_to_subject_mapping = (
-            await self.create_name_to_subject_mapping(er_subjects)
-        )
-        self.er_subject_id_to_subject_mapping = dict(
-            (subject.get("id"), subject) for subject in er_subjects
-        )
-        er_subject_names = set(self.er_subject_name_to_subject_mapping.keys())
-        er_subject_ids = set(self.er_subject_id_to_subject_mapping.keys())
-        er_subject_names_and_ids = er_subject_names | er_subject_ids
-
-        # Iterate through rmwSets and determine what is an insert and what is an update to Earthranger
         rmw_inserts = set()
-        rmw_updates = set()
         for gearset in rmw_sets:
             for trap in gearset.traps:
-                if RmwHubAdapter.clean_id_str(trap.id) in er_subject_names_and_ids:
-                    rmw_updates.add(gearset)
-                else:
-                    rmw_inserts.add(gearset)
-
-        # Handle inserts to Earthranger
-        visited_inserts = set()
-        for gearset in rmw_inserts:
-            logger.info(f"Rmw Set ID {gearset.id} not found in ER subjects. Inserting.")
-
-            # Process each trap individually
-            for trap in gearset.traps:
-                if await gearset.is_visited(visited_inserts):
-                    logger.info(
-                        f"Skipping insert for trap ID {trap.id}. Already processed."
-                    )
-                    continue
-
-                visited_inserts.update(await gearset.get_trap_ids())
-
-                logger.info(f"Processing trap ID {trap.id} for insert to ER.")
-
-                # Create observations for the gear set from RmwHub
                 new_observations = await self._create_observations(gearset)
-
                 observations.extend(new_observations)
-                logger.info(
-                    f"Processed {len(new_observations)} new observations for trap ID {trap.id}."
-                )
-
-                if len(new_observations) == 0:
-                    # New observations dict will be empty if ER has the latest update
-                    logger.info(f"ER has the most recent update for trap ID {trap.id}.")
-
-        # Handle updates to Earthranger
-        visited_updates = set()
-        for gearset in rmw_updates:
-            logger.info(f"Rmw Set ID {gearset.id} found in ER subjects. Updating.")
-
-            for trap in gearset.traps:
-                # Process each trap individually
-                if await gearset.is_visited(visited_updates):
-                    logger.info(
-                        f"Skipping insert for trap ID {trap.id}. Already processed."
-                    )
-                    continue
-
-                visited_updates.update(await gearset.get_trap_ids())
-                logger.info(f"Processing trap ID {trap.id} for update to ER.")
-
-                # Get subject from ER
-                clean_trap_id = RmwHubAdapter.clean_id_str(trap.id)
-                if clean_trap_id in self.er_subject_name_to_subject_mapping.keys():
-                    er_subject = self.er_subject_name_to_subject_mapping.get(
-                        clean_trap_id
-                    )
-                elif clean_trap_id in self.er_subject_id_to_subject_mapping.keys():
-                    er_subject = self.er_subject_id_to_subject_mapping.get(
-                        clean_trap_id
-                    )
-                else:
-                    logger.error(
-                        f"Subject ID {clean_trap_id} not found in ER subjects."
-                    )
-                    er_subject = None
-
-                # Create observations for the gear set from RmwHub
-                new_observations = await self._create_observations(gearset, er_subject)
-
-                observations.extend(new_observations)
-                logger.info(
-                    f"Processed {len(new_observations)} new observations for trap ID {trap.id}."
-                )
-
-                if len(new_observations) == 0:
-                    # New observations dict will be empty if ER has the latest update
-                    logger.info(f"ER has the most recent update for trap ID {trap.id}.")
 
         return observations
 
