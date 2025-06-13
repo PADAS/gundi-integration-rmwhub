@@ -53,11 +53,6 @@ async def test_rmw_adapter_process_download(
         return_value=[],
     )
 
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.patch_er_subject_status",
-        return_value=json.dumps(None),
-    )
-
     rmwadapter = RmwHubAdapter(
         a_good_integration.id,
         a_good_configuration.api_key,
