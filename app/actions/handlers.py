@@ -70,7 +70,6 @@ async def action_pull_observations(
             f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."
         )
 
-        print(er_token)
 
         rmw_adapter = RmwHubAdapter(
             integration.id,
