@@ -439,13 +439,6 @@ class RmwHubAdapter:
     def validate_id_length(self, id_str: str):
         return id_str.ljust(32, "#")
 
-    async def sync_subject_statuses(self, since):
-        er_subjects = await self.er_client.get_er_subjects(since, criteria = "updated_since")
-        for subject in er_subjects:
-            await self.er_client.patch_er_subject_status(
-                    subject, subject['additional']['event_type'] == 'deployed'
-                )        
-
     async def process_upload(self, start_datetime: datetime) -> Tuple[List, dict]:
         """
         Process the sets from the Buoy API and upload to RMWHub.

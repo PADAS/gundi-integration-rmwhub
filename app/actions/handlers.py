@@ -70,6 +70,8 @@ async def action_pull_observations(
             f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."
         )
 
+        print(er_token)
+
         rmw_adapter = RmwHubAdapter(
             integration.id,
             action_config.api_key.get_secret_value(),
@@ -163,9 +165,6 @@ async def action_pull_observations(
             await send_observations_to_gundi(
                 observations=batch, integration_id=str(integration.id)
             )
-
-        # Patch subject status
-        await rmw_adapter.sync_subject_statuses(since = start_datetime)
 
     # The result will be recorded in the portal if using the activity_logger decorator
     num_total_observations = len(total_observations) + num_put_set_id_observations

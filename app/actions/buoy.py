@@ -124,28 +124,6 @@ class BuoyClient:
 
         return []
 
-    async def patch_er_subject_status(self, subject, state: bool):
-        """
-        Update the state of a subject by either the subject ID or the subject name
-        """
-
-        BuoyClient.headers["Authorization"] = f"Bearer {self.er_token}"
-        url = self.er_site + f"/subject/{subject.get('id')}/"
-        dict = {"is_active": state}
-
-        async with httpx.AsyncClient() as client:
-            response = await client.patch(url, headers=BuoyClient.headers, json=dict)
-
-        if response.status_code != 200:
-            logger.exception(
-                "Failed to update subject state for %s. Error: %s",
-                subject['name'],
-                response.text,
-            )
-        logger.info(
-            f"Successfully updated subject state for {subject['name']} to {state}"
-        )
-
     async def get_source_provider(self, er_subject_id: str) -> str:
         """
         Get the source provider for a subject
