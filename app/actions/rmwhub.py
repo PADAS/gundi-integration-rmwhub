@@ -70,10 +70,12 @@ class Trap(BaseModel):
         Get the last updated time of the trap based on the status.
         """
 
+        traptime = None
         if self.status == "deployed":
-            return Trap.convert_to_utc(self.deploy_datetime_utc)
+            traptime = self.deploy_datetime_utc or datetime.now()
         elif self.status == "retrieved":
-            return Trap.convert_to_utc(self.retrieved_datetime_utc)
+            traptime = self.retrieved_datetime_utc or self.surface_datetime_utc or self.deploy_datetime_utc or datetime.now()
+        return Trap.convert_to_utc(traptime)
 
     @classmethod
     # TODO: Convert to local function within get_latest_update_time after update status code is removed. RF-755
