@@ -68,10 +68,6 @@ async def test_handler_action_pull_observations(
         return_value=(0, {}),
     )
     mocker.patch(
-        "app.actions.rmwhub.RmwHubAdapter.push_status_updates",
-        return_value=None,
-    )
-    mocker.patch(
         "app.actions.handlers.get_er_token_and_site",
         return_value=("super_secret_token", "er.destination.com"),
     )
