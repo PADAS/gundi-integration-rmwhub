@@ -6,18 +6,15 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import List, Optional, Tuple
 
 import backoff
 import httpx
 import pytz
-import stamina
 from dateparser import parse as parse_date
 from fastapi.encoders import jsonable_encoder
 from gundi_core.schemas.v2.gundi import LogLevel
 from pydantic import BaseModel, NoneStr, validator
-
-from app.actions.buoy import BuoyClient
+from erclient import ERClient
 from app.services.activity_logger import log_action_activity
 
 logger = logging.getLogger(__name__)
@@ -78,7 +75,6 @@ class Trap(BaseModel):
         return Trap.convert_to_utc(traptime)
 
     @classmethod
-    # TODO: Convert to local function within get_latest_update_time after update status code is removed. RF-755
     def convert_to_utc(self, datetime_str: str) -> datetime:
         """
         Convert the datetime string to UTC.
@@ -243,7 +239,7 @@ class RmwHubAdapter:
     ):
         self.integration_id = integration_id
         self.rmw_client = RmwHubClient(api_key, rmw_url)
-        self.er_client = BuoyClient(er_token, er_destination)
+        self.er_client = ERClient(service_root = er_destination, token = er_token)
         self.er_subject_name_to_subject_mapping = {}
         self.options = kwargs.get("options", {})
 
@@ -319,14 +315,14 @@ class RmwHubAdapter:
     def convert_to_sets(self, response_json: dict) -> List[GearSet]:
 
         if "sets" not in response_json:
-            logger.error(f"Failed to download data from RMW Hub API.")
+            logger.error("Failed to download data from RMW Hub API.")
             return []
 
         sets = response_json["sets"]
         gearsets = []
-        for set in sets:
+        for gearset in sets:
             traps = []
-            for trap in set["traps"]:
+            for trap in gearset["traps"]:
                 trap_obj = Trap(
                     id=trap["trap_id"],
                     sequence=trap["sequence"],
@@ -343,13 +339,13 @@ class RmwHubAdapter:
                 traps.append(trap_obj)
 
             gearset = GearSet(
-                vessel_id=set["vessel_id"],
-                id=set["set_id"],
-                deployment_type=set["deployment_type"],
-                traps_in_set=set.get("traps_in_set"),
-                trawl_path=set["trawl_path"],
-                share_with=set.get("share_with", []),
-                when_updated_utc=set["when_updated_utc"],
+                vessel_id=gearset["vessel_id"],
+                id=gearset["set_id"],
+                deployment_type=gearset["deployment_type"],
+                traps_in_set=gearset.get("traps_in_set"),
+                trawl_path=gearset["trawl_path"],
+                share_with=gearset.get("share_with", []),
+                when_updated_utc=gearset["when_updated_utc"],
                 traps=traps,
             )
 
@@ -357,9 +353,7 @@ class RmwHubAdapter:
 
         return gearsets
 
-    async def process_download(
-        self, rmw_sets: List[GearSet], start_datetime: datetime, minute_interval: int
-    ) -> List:
+    async def process_download(self, rmw_sets: List[GearSet]) -> List:
         """
         Process the sets from the RMW Hub API.
         """
@@ -407,6 +401,13 @@ class RmwHubAdapter:
     def validate_id_length(self, id_str: str):
         return id_str.ljust(32, "#")
 
+    def get_er_subjects(self, start_datetime):
+        return list(self.er_client._get(path = "subjects", params = {
+            "include_inactive": True,
+            "include_details": True,
+            "position_updated_since": start_datetime
+        }))
+
     async def process_upload(self, start_datetime: datetime) -> Tuple[List, dict]:
         """
         Process the sets from the Buoy API and upload to RMWHub.
@@ -420,7 +421,8 @@ class RmwHubAdapter:
         existing_updates = []
 
         # Get updates from the last interval_minutes in ER
-        er_subjects = await self.er_client.get_er_subjects(start_datetime)
+        er_subjects = self.get_er_subjects(start_datetime)
+
         if er_subjects:
             await log_action_activity(
                 integration_id=self.integration_id,
@@ -453,19 +455,7 @@ class RmwHubAdapter:
                 logger.error(f"Subject ID {subject['id']} has no name. No action.")
                 continue
 
-            latest_observation = await self.er_client.get_latest_observations(
-                subject["id"], 1
-            )
-            if not latest_observation:
-                logging.info(
-                    f"No latest observation found for subject {subject['id']}.  Skipping..."
-                )
-                continue
-            latest_observation = latest_observation[0]
-
-            devices = latest_observation.get("observation_details", {}).get(
-                "devices", []
-            )
+            devices = subject['additional'].get("devices", [])
             if not devices:
                 logging.info(
                     f"No devices in latest observation for subject {subject['id']}.  Skipping..."
@@ -493,13 +483,11 @@ class RmwHubAdapter:
 
             if rmwhub_set and (
                 parse_date(rmwhub_set.when_updated_utc)
-                > (parse_date(latest_observation["created_at"]) + timedelta(minutes = 15))
+                > (parse_date(subject['updated_at']) + timedelta(minutes = 15))
             ):
                 continue
 
-            new_gearset = await self._create_rmw_update_from_er_subject(
-                subject, latest_observation, rmwhub_set
-            )
+            new_gearset = await self._create_rmw_update_from_er_subject(subject, rmwhub_set)
             if new_gearset:
                 logger.info(f"Generated update for gearset {trap_list}")
                 updates.append(new_gearset)
@@ -561,7 +549,6 @@ class RmwHubAdapter:
     async def _create_rmw_update_from_er_subject(
         self,
         er_subject: dict,
-        latest_observation: dict,
         rmw_gearset: GearSet = None,
     ) -> Optional[GearSet]:
         """
@@ -572,15 +559,8 @@ class RmwHubAdapter:
         :param latest_observation: Latest observation for the subject (not required for new inserts)
         """
 
-        deployed = ((latest_observation.get('observation_details', {}).get('event_type') == 'gear_deployed') if latest_observation 
-                    else er_subject.get('is_active'))
-
-        devices = (latest_observation.get("observation_details", {}).get("devices") if latest_observation
-            else er_subject.get("additional", {}).get("devices")
-        )
-        latest_observation_datetime = (latest_observation.get("recorded_at") if latest_observation
-            else None
-        )
+        deployed = er_subject.get('is_active')
+        devices = er_subject.get("additional", {}).get("devices")
         trap_id_mapping = ({RmwHubAdapter.clean_id_str(trap.id): trap for trap in rmw_gearset.traps} if rmw_gearset
             else {}
         )
@@ -598,9 +578,7 @@ class RmwHubAdapter:
                 logger.debug(f"This trap ({trap_id}) is not being deployed and still does not exist in RMW Hub, skipping.")
                 continue
 
-            rmw_trap_datetime = (latest_observation_datetime if latest_observation
-                else device.get("last_updated")
-            )
+            rmw_trap_datetime = device.get("last_updated", er_subject['updated_at'])
             rmw_trap_datetime = (self.convert_datetime_to_utc(rmw_trap_datetime) if rmw_trap_datetime
                 else None
             )

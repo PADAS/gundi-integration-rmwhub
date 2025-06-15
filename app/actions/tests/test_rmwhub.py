@@ -1,7 +1,6 @@
 from datetime import datetime
 import json
 from unittest.mock import AsyncMock
-from app.actions.buoy import BuoyClient
 import pytest
 import pytz
 
@@ -47,9 +46,8 @@ async def test_rmw_adapter_process_download(
     """
 
     # Setup mock_rmwhub_client
-    mocker.patch.object(
-        BuoyClient,
-        "get_er_subjects",
+    mocker.patch(
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=[],
     )
 
@@ -82,11 +80,7 @@ async def test_rmw_adapter_process_download(
         )
         for j in range(1, num_gearsets + 1)
     ]
-    start_datetime = datetime.now(tz=pytz.utc)
-    minute_interval = 5
-    observations = await rmwadapter.process_download(
-        rmw_sets, start_datetime, minute_interval
-    )
+    observations = await rmwadapter.process_download(rmw_sets)
 
     assert len(observations) == num_gearsets * num_traps
 
@@ -156,7 +150,6 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     a_good_configuration,
     a_good_integration,
     mock_rmw_upload_response,
-    mock_get_latest_observations,
 ):
     """
     Test RmwHubAdapter.process_upload insert operations
@@ -176,7 +169,7 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     # Test handle 0 rmw_sets and 0 ER subjects
     data = []
     mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=data,
     )
     result = {}
@@ -187,18 +180,6 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     mocker.patch(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
         return_value=[],
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_gear",
-        return_value=[],
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_source_provider",
-        return_value="rmw",
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.create_v1_observation",
-        return_value=1,
     )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
@@ -214,7 +195,7 @@ async def test_rmwhub_adapter_process_upload_insert_success(
         for i in range(1, num_subjects + 1)
     ]
     mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=data,
     )
     mocker.patch(
@@ -241,14 +222,6 @@ async def test_rmwhub_adapter_process_upload_insert_success(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
         return_value=[mock_er_gearset],
     )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_latest_observations",
-        new=mock_get_latest_observations,
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_gear",
-        return_value=[],
-    )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
     assert observations == num_subjects
@@ -264,7 +237,7 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     ]
     data = mock_er_subjects_from_rmw
     mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=data,
     )
     mock_rmw_upload_response["trap_count"] = 0
@@ -275,10 +248,6 @@ async def test_rmwhub_adapter_process_upload_insert_success(
     mocker.patch(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
         return_value=[mock_er_gearset],
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_gear",
-        return_value=[],
     )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
@@ -292,7 +261,6 @@ async def test_rmwhub_adapter_process_upload_update_success(
     a_good_configuration,
     a_good_integration,
     mock_rmw_upload_response,
-    mock_get_latest_observations,
 ):
     """
     Test RmwHubAdapter.process_upload update operations
@@ -313,7 +281,7 @@ async def test_rmwhub_adapter_process_upload_update_success(
     num_subjects = 4
     data = [SubjectFactory.create() for _ in range(num_subjects)]
     mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=data,
     )
     mock_rmw_upload_response["trap_count"] = num_subjects
@@ -363,22 +331,6 @@ async def test_rmwhub_adapter_process_upload_update_success(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
         return_value=mock_search_own_response,
     )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_gear",
-        return_value=[],
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_latest_observations",
-        new=mock_get_latest_observations,
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_source_provider",
-        return_value={"source_provider": "rmwhub"},
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.create_v1_observation",
-        return_value=0,
-    )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
     assert observations == num_subjects
@@ -407,7 +359,7 @@ async def test_rmwhub_adapter_process_upload_failure(
     # Test handle ER upload failure
     data = []
     mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=data,
     )
     mocker.patch(
@@ -435,10 +387,6 @@ async def test_rmwhub_adapter_process_upload_failure(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
         return_value=[return_gearset],
     )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_gear",
-        return_value=[],
-    )
 
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
     assert observations == 0
@@ -450,7 +398,6 @@ async def test_rmwhub_adapter_create_rmw_update_from_simple_er_trawl(
     mocker,
     a_good_integration,
     a_good_configuration,
-    mock_get_latest_observations,
 ):
     rmwadapter = RmwHubAdapter(
         a_good_integration.id,
@@ -460,15 +407,9 @@ async def test_rmwhub_adapter_create_rmw_update_from_simple_er_trawl(
         "er.destination.com",
     )
 
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_latest_observations",
-        return_value=mock_get_latest_observations,
-    )
-
     # Test create INSERT update (no existing rmwHub gearset)
     subject = SubjectFactory.create()
-    latest_observation = SubjectFactory.create_latest_observation(subject['id'])[0]
-    gearset_insert = await rmwadapter._create_rmw_update_from_er_subject(subject, latest_observation)
+    gearset_insert = await rmwadapter._create_rmw_update_from_er_subject(subject)
 
     assert gearset_insert
     assert gearset_insert.traps[0].id
@@ -493,8 +434,7 @@ async def test_rmwhub_adapter_create_rmw_update_from_simple_er_trawl(
         ],
     )
     subject = SubjectFactory.create()
-    latest_observation = SubjectFactory.create_latest_observation(subject['id'])[0]
-    gearset_update = await rmwadapter._create_rmw_update_from_er_subject(er_subject = subject, latest_observation = latest_observation, rmw_gearset=mock_rmwhub_gearset
+    gearset_update = await rmwadapter._create_rmw_update_from_er_subject(er_subject = subject, rmw_gearset=mock_rmwhub_gearset
     )
 
     assert gearset_update
@@ -507,7 +447,6 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     mocker,
     a_good_integration,
     a_good_configuration,
-    mock_get_latest_observations_with_duplicates,
 ):
     rmw_adapter = RmwHubAdapter(
         a_good_integration.id,
@@ -529,12 +468,8 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
         for i in range(1, num_subjects + 1)
     ]
     mocker.patch(
-        "app.actions.buoy.BuoyClient.get_er_subjects",
+        "app.actions.rmwhub.RmwHubAdapter.get_er_subjects",
         return_value=data,
-    )
-    mocker.patch(
-        "app.actions.buoy.BuoyClient.get_latest_observations",
-        return_value=mock_get_latest_observations_with_duplicates,
     )
 
     num_traps = 1
@@ -573,6 +508,7 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
         )
         for j in range(2)
     ]
+    
     mock_search_own_response.append(mock_er_gearset)
     mocker.patch(
         "app.actions.rmwhub.RmwHubAdapter.search_own",
@@ -582,4 +518,4 @@ async def test_rmwhub_adapter_create_rmw_update_from_er_subject(
     uploadMock = AsyncMock()
     mocker.patch("app.actions.rmwhub.RmwHubAdapter._upload_data", uploadMock)
     observations, rmw_response = await rmw_adapter.process_upload(start_datetime)
-    assert observations == 2
+    assert observations == 4

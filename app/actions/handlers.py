@@ -70,7 +70,6 @@ async def action_pull_observations(
             f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."
         )
 
-
         rmw_adapter = RmwHubAdapter(
             integration.id,
             action_config.api_key.get_secret_value(),
@@ -109,9 +108,7 @@ async def action_pull_observations(
             logger.info(
                 f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmwSets)}"
             )
-            observations = await rmw_adapter.process_download(
-                rmwSets, start_datetime, sync_interval_minutes
-            )
+            observations = await rmw_adapter.process_download(rmwSets)
             total_observations.extend(observations)
         else:
             await log_action_activity(

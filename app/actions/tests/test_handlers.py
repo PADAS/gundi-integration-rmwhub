@@ -68,10 +68,6 @@ async def test_handler_action_pull_observations(
         return_value=(0, {}),
     )
     mocker.patch(
-        "app.actions.rmwhub.RmwHubAdapter.push_status_updates",
-        return_value=None,
-    )
-    mocker.patch(
         "app.actions.handlers.get_er_token_and_site",
         return_value=("super_secret_token", "er.destination.com"),
     )
@@ -88,12 +84,4 @@ async def test_handler_action_pull_observations(
         len(mock_rmw_observations) * len(a_good_connection.destinations)
     )
 
-    sync_interval_minutes = 30
-    expected_start_datetime = (
-        fixed_now - timedelta(minutes=sync_interval_minutes)
-    ).astimezone(pytz.utc)
-
     assert download_data_mock.call_count == len(a_good_connection.destinations)
-    for call in download_data_mock.call_args_list:
-        args, kwargs = call
-        assert args[0] == expected_start_datetime
