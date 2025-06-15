@@ -168,82 +168,48 @@ class GearSet(BaseModel):
 
         return devices
 
-    async def create_observations(self, er_subject: dict = None) -> List:
+    async def create_observations(self) -> List:
         """
         Create observations for the gear set.
         """
 
-        devices = self.get_devices()
-
-        observations = []
-
+        most_recent = None
         for trap in self.traps:
-            if (
-                self.deployment_type == "trawl"
-                and er_subject
-                and RmwHubAdapter.clean_id_str(er_subject.get("name"))
-                == RmwHubAdapter.clean_id_str(trap.id)
-            ):
-                if er_subject.get("additional") and (
-                    er_subject_devices := er_subject.get("additional").get("devices")
-                ):
-                    if len(self.traps) != len(er_subject_devices):
-                        trap.shift_update_time()
+            updated = trap.get_latest_update_time()
+            if(not most_recent or updated > most_recent):
+                most_recent = updated
 
-            if trap.status == "deployed":
-                observations.append(
-                    self.create_observation_for_event(trap, devices, Status.DEPLOYED)
-                )
-            elif trap.status == "retrieved":
-                observations.append(
-                    self.create_observation_for_event(trap, devices, Status.RETRIEVED)
-                )
-            else:
-                logger.error(
-                    f"Invalid status for trap ID {trap.id}. Status: {trap.status}"
-                )
-                return []
+        last_updated = most_recent.isoformat()
+        observations = []
+        for trap in self.traps:
 
-        logger.info(f"Created {len(observations)} observations for gear set {self.id}.")
+            display_id_hash = hashlib.sha256(str(self.id).encode()).hexdigest()[:12]
+            subject_name = "rmwhub_" + trap.id
+            
+            observation = {
+                "name": subject_name,
+                "source": subject_name,
+                "type": SOURCE_TYPE,
+                "subject_type": SUBJECT_SUBTYPE,
+                "is_active": True if trap.status == Status.DEPLOYED else False,
+                "recorded_at": last_updated,
+                "location": {"lat": trap.latitude, "lon": trap.longitude},
+                "additional": {
+                    "subject_is_active": True if trap.status == Status.DEPLOYED else False,
+                    "subject_name": subject_name,
+                    "rmwhub_set_id": self.id,
+                    "display_id": display_id_hash,
+                    "event_type": GEAR_DEPLOYED_EVENT
+                    if trap.status == "deployed"
+                    else GEAR_RETRIEVED_EVENT,
+                    "devices": self.get_devices(),
+                },
+            }
+
+
+            observations.append(observation)
 
         return observations
-
-    def create_observation_for_event(
-        self, trap: Trap, devices: List, event_status: Status
-    ) -> dict:
-        """
-        Create an observation from the RMW Hub trap.
-        """
-
-        display_id_hash = hashlib.sha256(str(self.id).encode()).hexdigest()[:12]
-        subject_name = "rmwhub_" + trap.id
-
-        last_updated = trap.get_latest_update_time().isoformat()
-        observation = {
-            "name": subject_name,
-            "source": subject_name,
-            "type": SOURCE_TYPE,
-            "subject_type": SUBJECT_SUBTYPE,
-            "is_active": True if event_status == Status.DEPLOYED else False,
-            "recorded_at": last_updated,
-            "location": {"lat": trap.latitude, "lon": trap.longitude},
-            "additional": {
-                "subject_is_active": True if event_status == Status.DEPLOYED else False,
-                "subject_name": subject_name,
-                "rmwhub_set_id": self.id,
-                "display_id": display_id_hash,
-                "event_type": GEAR_DEPLOYED_EVENT
-                if trap.status == "deployed"
-                else GEAR_RETRIEVED_EVENT,
-                "devices": devices,
-            },
-        }
-
-        logger.info(
-            f"Created observation for trap ID: {trap.id} with Subject name: {subject_name} with event type {event_status}."
-        )
-
-        return observation
 
     async def get_trap_ids(self) -> set:
         """
@@ -402,7 +368,7 @@ class RmwHubAdapter:
         observations = []
 
         for gearset in rmw_sets:
-            new_observations = await self._create_observations(gearset)
+            new_observations = await gearset.create_observations()
             observations.extend(new_observations)
 
         return observations
@@ -527,7 +493,7 @@ class RmwHubAdapter:
 
             if rmwhub_set and (
                 parse_date(rmwhub_set.when_updated_utc)
-                > parse_date(latest_observation["created_at"])
+                > (parse_date(latest_observation["created_at"]) + timedelta(minutes = 15))
             ):
                 continue
 
@@ -558,71 +524,6 @@ class RmwHubAdapter:
             )
 
         return num_new_observations, response
-
-    async def _create_observations(
-        self, rmw_set: GearSet, er_subject: dict = None
-    ) -> List:
-        """
-        Create new observations for ER from RmwHub data.
-
-        Returns an empty list if ER has the most recent updates. Otherwise, list of new observations to write to ER.
-        """
-
-        # Create observations for the gear set
-        observations = await rmw_set.create_observations(er_subject)
-
-        return observations
-
-    async def _create_put_er_set_id_observation(
-        self, er_subject: dict, set_id: str
-    ) -> int:
-        """
-        Update the set ID for the ER subject based on the provided set ID.
-        Returns 1 if the observation was created for the ER subject, 0 otherwise.
-        """
-        devices = er_subject.get("additional").get("devices", [])
-        display_id_hash = self.generate_display_id_from_devices(devices)
-
-        is_active = er_subject.get("is_active")
-        source_provider = await self.er_client.get_source_provider(er_subject.get("id"))
-
-        observations = []
-        for device in devices:
-            observations.append(
-                {
-                    "name": device["device_id"],
-                    "source": device["device_id"],
-                    "manufacturer_id": device["device_id"],
-                    "type": SOURCE_TYPE,
-                    "subject_type": SUBJECT_SUBTYPE,
-                    "is_active": is_active,
-                    # TODO: SPIKE to determine if this should be device["last_updated"]
-                    "recorded_at": datetime.now().isoformat(),
-                    "location": {
-                        "lat": device["location"]["latitude"],
-                        "lon": device["location"]["longitude"],
-                    },
-                    "additional": {
-                        "subject_is_active": is_active,
-                        "subject_name": device["device_id"],
-                        "rmwhub_set_id": set_id,
-                        "display_id": display_id_hash,
-                        "event_type": GEAR_DEPLOYED_EVENT
-                        if is_active
-                        else GEAR_RETRIEVED_EVENT,
-                        "devices": er_subject["additional"]["devices"],
-                    },
-                }
-            )
-
-        # Send observations to Gundi v1 Sensors API
-        created = 0
-        for observation in observations:
-            created += await self.er_client.create_v1_observation(
-                source_provider, observation
-            )
-
-        return created
 
     async def _upload_data(
         self,
@@ -686,7 +587,7 @@ class RmwHubAdapter:
 
         traps = []
         for device in devices:
-            # Use just the ID for the Trap ID if the gearset is originally from RMW
+            
             subject_name = er_subject.get("name")
             device_name = device.get("device_id")
             cleaned_id = RmwHubAdapter.clean_id_str(device_name)
