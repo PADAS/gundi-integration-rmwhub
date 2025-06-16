@@ -26,12 +26,6 @@ GEAR_DEPLOYED_EVENT = "gear_deployed"
 GEAR_RETRIEVED_EVENT = "gear_retrieved"
 EPOCH = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc).isoformat()
 
-
-class Status(Enum):
-    DEPLOYED = "gear_deployed"
-    RETRIEVED = "gear_retrieved"
-
-
 class Trap(BaseModel):
     id: str
     sequence: int
@@ -86,21 +80,6 @@ class Trap(BaseModel):
 
         return utc_datetime_obj
 
-    def shift_update_time(self):
-        """
-        Shift the update time of the trap by 5 seconds.
-        """
-
-        if self.status == "deployed":
-            self.deploy_datetime_utc = (
-                self.get_latest_update_time() + timedelta(seconds=5)
-            ).isoformat()
-        elif self.status == "retrieved":
-            self.retrieved_datetime_utc = (
-                self.get_latest_update_time() + timedelta(seconds=5)
-            ).isoformat()
-
-
 class GearSet(BaseModel):
     vessel_id: str
     id: str
@@ -139,12 +118,6 @@ class GearSet(BaseModel):
 
         devices = []
         for trap in self.traps:
-            last_deployed = (
-                trap.get_latest_update_time().isoformat()
-                if trap.status == "deployed"
-                else trap.deploy_datetime_utc
-            )
-
             devices.append(
                 {
                     "device_id": "rmwhub_"
@@ -157,8 +130,8 @@ class GearSet(BaseModel):
                         "latitude": trap.latitude,
                         "longitude": trap.longitude,
                     },
-                    "last_deployed": last_deployed,
-                    "last_updated": last_deployed,
+                    "last_deployed": self.when_updated_utc,
+                    "last_updated": self.when_updated_utc,
                 }
             )
 
@@ -168,14 +141,6 @@ class GearSet(BaseModel):
         """
         Create observations for the gear set.
         """
-
-        most_recent = None
-        for trap in self.traps:
-            updated = trap.get_latest_update_time()
-            if(not most_recent or updated > most_recent):
-                most_recent = updated
-
-        last_updated = most_recent.isoformat()
         observations = []
         for trap in self.traps:
 
@@ -187,11 +152,11 @@ class GearSet(BaseModel):
                 "source": subject_name,
                 "type": SOURCE_TYPE,
                 "subject_type": SUBJECT_SUBTYPE,
-                "is_active": True if trap.status == Status.DEPLOYED else False,
-                "recorded_at": last_updated,
+                "is_active": True if trap.status == "deployed" else False,
+                "recorded_at": self.when_updated_utc,
                 "location": {"lat": trap.latitude, "lon": trap.longitude},
                 "additional": {
-                    "subject_is_active": True if trap.status == Status.DEPLOYED else False,
+                    "subject_is_active": True if trap.status == "deployed" else False,
                     "subject_name": subject_name,
                     "rmwhub_set_id": self.id,
                     "display_id": display_id_hash,
