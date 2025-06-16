@@ -405,7 +405,8 @@ class RmwHubAdapter:
         return list(self.er_client._get(path = "subjects", params = {
             "include_inactive": True,
             "include_details": True,
-            "position_updated_since": start_datetime
+            "updated_since": start_datetime,
+            "subject_subtypes": "ropeless_buoy_device"
         }))
 
     async def process_upload(self, start_datetime: datetime) -> Tuple[List, dict]:
@@ -556,7 +557,6 @@ class RmwHubAdapter:
 
         :param er_subject: ER subject to create updates from
         :param rmw_gearset: RMW gear set to update (not required for new inserts)
-        :param latest_observation: Latest observation for the subject (not required for new inserts)
         """
 
         deployed = er_subject.get('is_active')
