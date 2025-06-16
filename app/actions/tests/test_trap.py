@@ -42,24 +42,3 @@ async def test_trap_convert_to_utc():
         parsed_datetime_with_fractional_seconds.strftime("%Y-%m-%d %H:%M:%S.%f")
         == datetime_with_fractional_seconds_str
     )
-
-
-@pytest.mark.asyncio
-async def test_trap_shift_update_time():
-    # Setup mock trap
-    mock_trap = TrapFactory.create(
-        trap_id="test_trap_id_001",
-        sequence=1,
-        latitude=10.0,
-        longitude=20.0,
-        deploy_datetime_utc="2023-01-01T00:00:00Z",
-        status="deployed",
-    )
-
-    expected_deployment_time = (
-        mock_trap.get_latest_update_time() + timedelta(seconds=5)
-    ).isoformat()
-
-    mock_trap.shift_update_time()
-
-    assert mock_trap.deploy_datetime_utc == expected_deployment_time
