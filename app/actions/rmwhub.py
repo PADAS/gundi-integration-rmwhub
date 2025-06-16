@@ -26,12 +26,6 @@ GEAR_DEPLOYED_EVENT = "gear_deployed"
 GEAR_RETRIEVED_EVENT = "gear_retrieved"
 EPOCH = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc).isoformat()
 
-
-class Status(Enum):
-    DEPLOYED = "gear_deployed"
-    RETRIEVED = "gear_retrieved"
-
-
 class Trap(BaseModel):
     id: str
     sequence: int
@@ -158,11 +152,11 @@ class GearSet(BaseModel):
                 "source": subject_name,
                 "type": SOURCE_TYPE,
                 "subject_type": SUBJECT_SUBTYPE,
-                "is_active": True if trap.status == Status.DEPLOYED else False,
+                "is_active": True if trap.status == "deployed" else False,
                 "recorded_at": self.when_updated_utc,
                 "location": {"lat": trap.latitude, "lon": trap.longitude},
                 "additional": {
-                    "subject_is_active": True if trap.status == Status.DEPLOYED else False,
+                    "subject_is_active": True if trap.status == "deployed" else False,
                     "subject_name": subject_name,
                     "rmwhub_set_id": self.id,
                     "display_id": display_id_hash,
