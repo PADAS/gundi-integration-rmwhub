@@ -144,10 +144,10 @@ async def test_gearset_create_observations_with_traps():
     
     # Test first observation structure (following EdgeTech pattern)
     obs1 = observations[0]
-    assert "subject_name" in obs1
+    assert obs1["subject_name"] == "set_001"  # subject_name should be set_id
     assert obs1["subject_type"] == "ropeless_buoy_gearset"
     assert obs1["source_type"] == "ropeless_buoy"
-    assert "manufacturer_id" in obs1
+    assert obs1["manufacturer_id"] == "trap_1"  # manufacturer_id should be trap_id
     assert obs1["is_active"] is True  # First trap is deployed
     assert obs1["location"]["lat"] == 40.0  # First trap location
     assert obs1["location"]["lon"] == -70.0
@@ -157,7 +157,8 @@ async def test_gearset_create_observations_with_traps():
     
     # Test second observation structure
     obs2 = observations[1]
-    assert obs2["subject_name"] == obs1["subject_name"]  # Same subject_name for same gearset
+    assert obs2["subject_name"] == "set_001"  # Same subject_name (set_id) for same gearset
+    assert obs2["manufacturer_id"] == "trap_2"  # manufacturer_id should be trap_id
     assert obs2["is_active"] is False  # Second trap is retrieved
     assert obs2["location"]["lat"] == 41.0  # Second trap location
     assert obs2["location"]["lon"] == -71.0

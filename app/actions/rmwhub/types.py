@@ -137,12 +137,12 @@ class GearSet(BaseModel):
         """
         observations = []
         
-        # Generate unique subject_name for this gearset
-        subject_name = str(uuid.uuid4())
+        # Use set_id as subject_name (all traps in same gearset share this)
+        subject_name = self.id
         
         for trap in self.traps:
-            # Create manufacturer_id based on trap info
-            source_name = f"rmwhub_{trap.id}_{self.vessel_id}"
+            # Use trap_id as manufacturer_id
+            source_name = trap.id
             
             # Determine if this specific trap is active
             trap_is_active = trap.status == "deployed" if is_active else False
