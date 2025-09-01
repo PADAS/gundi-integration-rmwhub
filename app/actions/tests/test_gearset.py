@@ -139,21 +139,29 @@ async def test_gearset_create_observations_with_traps():
     
     observations = await gearset.create_observations()
     
-    assert len(observations) == 1
-    observation = observations[0]
+    # Now we should have one observation per trap (2 traps = 2 observations)
+    assert len(observations) == 2
     
-    # Test observation structure
-    assert "rmwhub_" in observation["name"]
-    assert observation["type"] == "ropeless_buoy"
-    assert observation["subject_type"] == "ropeless_buoy_gearset"
-    assert observation["is_active"] is True  # Has deployed trap
-    assert observation["location"]["lat"] == 40.0  # Primary trap location
-    assert observation["location"]["lon"] == -70.0
-    assert observation["additional"]["rmwhub_set_id"] == "set_001"
-    assert observation["additional"]["deployment_type"] == "trawl"
-    assert observation["additional"]["traps_in_set"] == 2
-    assert observation["additional"]["vessel_id"] == "vessel_001"
-    assert len(observation["additional"]["devices"]) == 2
+    # Test first observation structure (following EdgeTech pattern)
+    obs1 = observations[0]
+    assert "subject_name" in obs1
+    assert obs1["subject_type"] == "ropeless_buoy_gearset"
+    assert obs1["source_type"] == "ropeless_buoy"
+    assert "manufacturer_id" in obs1
+    assert obs1["is_active"] is True  # First trap is deployed
+    assert obs1["location"]["lat"] == 40.0  # First trap location
+    assert obs1["location"]["lon"] == -70.0
+    assert obs1["additional"]["event_type"] == "gear_deployed"
+    assert "source_additional" in obs1
+    assert "raw" in obs1["source_additional"]
+    
+    # Test second observation structure
+    obs2 = observations[1]
+    assert obs2["subject_name"] == obs1["subject_name"]  # Same subject_name for same gearset
+    assert obs2["is_active"] is False  # Second trap is retrieved
+    assert obs2["location"]["lat"] == 41.0  # Second trap location
+    assert obs2["location"]["lon"] == -71.0
+    assert obs2["additional"]["event_type"] == "gear_retrieved"
 
 
 @pytest.mark.asyncio

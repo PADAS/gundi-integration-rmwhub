@@ -83,8 +83,10 @@ async def test_rmw_adapter_process_download(
     ]
     observations = await rmwadapter.process_download(rmw_sets)
 
-    # Now we create one observation per gearset instead of per trap
-    assert len(observations) == num_gearsets
+    # Now we create one observation per trap instead of per gearset
+    # So with 5 gearsets and 2 traps each = 10 observations
+    expected_observations = num_gearsets * num_traps
+    assert len(observations) == expected_observations
 
 
 @pytest.mark.asyncio
