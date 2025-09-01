@@ -315,6 +315,13 @@ class RmwHubAdapter:
         last_location = er_gear.location
         last_updated = er_gear.last_updated
 
+        # Convert last_updated to string format for GearSet
+        last_updated_str = last_updated
+        if hasattr(last_updated_str, 'isoformat'):
+            last_updated_str = last_updated_str.isoformat()
+        elif not isinstance(last_updated_str, str):
+            last_updated_str = str(last_updated_str)
+
         # Create traps from devices
         traps = []
         for i, device in enumerate(er_gear.devices):
@@ -326,13 +333,6 @@ class RmwHubAdapter:
                 deploy_datetime = deploy_datetime.isoformat()
             elif not isinstance(deploy_datetime, str):
                 deploy_datetime = str(deploy_datetime)
-                
-            # Get last_updated and convert to string if needed
-            last_updated_str = last_updated
-            if hasattr(last_updated_str, 'isoformat'):
-                last_updated_str = last_updated_str.isoformat()
-            elif not isinstance(last_updated_str, str):
-                last_updated_str = str(last_updated_str)
             
             trap = Trap(
                 id=device.device_id if hasattr(device, 'device_id') else f"device_{i}",

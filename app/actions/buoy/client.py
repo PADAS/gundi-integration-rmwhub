@@ -154,6 +154,7 @@ class BuoyClient:
         return BuoyGear(
             id=data.get("id", ""),
             display_id=data.get("display_id", ""),
+            name=data.get("name", data.get("display_id", "")),  # Use name or fallback to display_id
             status=data.get("status", ""),
             last_updated=datetime.fromisoformat(data.get("last_updated", datetime.now().isoformat())),
             devices=devices,

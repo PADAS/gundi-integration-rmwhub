@@ -1,4 +1,3 @@
-# actions/handlers.py
 import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -38,8 +37,6 @@ async def action_auth(integration: Integration, action_config: AuthenticateConfi
         f"Executing auth action with integration {integration} and action_config {action_config}..."
     )
 
-    # TODO: Do something to validate the API Key against rmwHUB APIs.
-
     api_key_is_valid = action_config.api_key is not None
 
     return {
@@ -49,7 +46,7 @@ async def action_auth(integration: Integration, action_config: AuthenticateConfi
 
 
 @activity_logger()
-@crontab_schedule("*/3 * * * *")  # Run every 3 minutes
+@crontab_schedule("*/3 * * * *")
 async def action_pull_observations(
     integration, action_config: PullRmwHubObservationsConfiguration
 ):
@@ -58,7 +55,6 @@ async def action_pull_observations(
     start_datetime = current_datetime - timedelta(minutes=sync_interval_minutes)
     end_datetime = current_datetime
 
-    # TODO: Create sub-actions for each destination
     total_observations = []
     _client = GundiClient()
     connection_details = await _client.get_connection_details(integration.id)
@@ -77,7 +73,7 @@ async def action_pull_observations(
             er_token,
             er_destination + "api/v1.0",
             options={
-                "share_with": [] # TODO: Add the share_with option to the rmw adapter when fixed the process_rmw_download method
+                "share_with": []
             }
         )
 
@@ -124,7 +120,6 @@ async def action_pull_observations(
                 config_data=action_config.dict(),
             )
 
-        # Upload changes from ER to RMW Hub
         rmw_response = {}
         (
             num_put_set_id_observations,
@@ -154,15 +149,12 @@ async def action_pull_observations(
                 config_data=action_config.dict(),
             )
 
-
-        # Send the extracted data to Gundi in batches
         for batch in generate_batches(observations):
             logger.info(f"Sending {len(batch)} observations to Gundi...")
             await send_observations_to_gundi(
                 observations=batch, integration_id=str(integration.id)
             )
 
-    # The result will be recorded in the portal if using the activity_logger decorator
     num_total_observations = len(total_observations) + num_put_set_id_observations
     if rmw_response:
         return {
@@ -176,7 +168,7 @@ async def action_pull_observations(
 
 
 @activity_logger()
-@crontab_schedule("10 0 * * *")  # Run every 24 hours at 12:10 AM
+@crontab_schedule("10 0 * * *")
 async def action_pull_observations_24_hour_sync(
     integration, action_config: PullRmwHubObservationsConfiguration
 ):
@@ -192,13 +184,6 @@ def generate_batches(iterable, n=LOAD_BATCH_SIZE):
 async def get_er_token_and_site(
     integration: Integration, environment: Environment
 ) -> Tuple[str, str]:
-    """
-    Get the ER token and site for the given integration and environment
-
-    :param integration: Integration object
-    :param environment: Environment enum
-    :return: Tuple of ER token and site
-    """
     _client = GundiClient()
     connection_details = await _client.get_connection_details(integration.id)
 
