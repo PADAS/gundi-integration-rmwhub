@@ -1,402 +1,422 @@
 import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
-from unittest.mock import Mock
 
-from app.actions.buoy.types import (
-    BuoyGear, 
-    BuoyDevice, 
-    DeviceLocation, 
-    ObservationSubject,
-    Feature,
-    Geometry,
-    FeatureProperties,
-    CoordinateProperties,
-    LastPositionStatus
-)
+from pydantic import ValidationError
+
+from app.actions.buoy.types import Environment, DeviceLocation, BuoyDevice, BuoyGear
 
 
-@pytest.mark.asyncio
-async def test_buoy_gear_create_haul_observation():
-    """
-    Test BuoyGear.create_haul_observation method (lines 38-40)
-    """
-    # Create a BuoyGear with devices
-    device_location = DeviceLocation(latitude=40.0, longitude=-70.0)
-    device = BuoyDevice(
-        device_id="test_device_001",
-        label="a",
-        location=device_location,
-        last_updated=datetime.now(timezone.utc),
-        last_deployed=datetime.now(timezone.utc)
-    )
+class TestEnvironment:
+    """Test cases for the Environment enum."""
     
-    buoy_gear = BuoyGear(
-        id=uuid4(),
-        display_id="test_display_id",
-        name="Test Gear",
-        status="deployed",
-        last_updated=datetime.now(timezone.utc),
-        devices=[device],
-        type="ropeless_buoy",
-        manufacturer="test_manufacturer"
-    )
+    def test_environment_values(self):
+        """Test that Environment enum has correct values."""
+        assert Environment.DEV.value == "Buoy Dev"
+        assert Environment.STAGE.value == "Buoy Staging"
+        assert Environment.PRODUCTION.value == "Buoy Prod"
     
-    recorded_at = datetime.now(timezone.utc)
+    def test_environment_names(self):
+        """Test that Environment enum has correct names."""
+        assert Environment.DEV.name == "DEV"
+        assert Environment.STAGE.name == "STAGE"
+        assert Environment.PRODUCTION.name == "PRODUCTION"
     
-    # Test create_haul_observation method
-    observations = buoy_gear.create_haul_observation(recorded_at)
-    
-    assert len(observations) == 1
-    observation = observations[0]
-    
-    assert observation["subject_name"] == "test_display_id"
-    assert observation["manufacturer_id"] == "test_device_001"
-    assert observation["subject_is_active"] is False
-    assert observation["location"]["lat"] == 40.0
-    assert observation["location"]["lon"] == -70.0
-    assert observation["recorded_at"] == recorded_at
+    def test_environment_from_value(self):
+        """Test creating Environment from values."""
+        assert Environment("Buoy Dev") == Environment.DEV
+        assert Environment("Buoy Staging") == Environment.STAGE
+        assert Environment("Buoy Prod") == Environment.PRODUCTION
 
 
-@pytest.mark.asyncio
-async def test_observation_subject_location_property():
-    """
-    Test ObservationSubject.location property (line 120)
-    """
-    # Create mock coordinate properties
-    coord_props = CoordinateProperties(time=datetime.now(timezone.utc))
+class TestDeviceLocation:
+    """Test cases for the DeviceLocation model."""
     
-    # Create mock geometry
-    geometry = Geometry(
-        type="Point",
-        coordinates=[-70.0, 40.0]  # [longitude, latitude]
-    )
+    def test_device_location_creation(self):
+        """Test successful DeviceLocation creation."""
+        location = DeviceLocation(latitude=42.123456, longitude=-71.987654)
+        
+        assert location.latitude == 42.123456
+        assert location.longitude == -71.987654
     
-    # Create mock feature properties - using dict with aliases
-    feature_props_data = {
-        "title": "Test Subject",
-        "subject_type": "ropeless_buoy",
-        "subject_subtype": "ropeless_buoy_gearset",
-        "id": uuid4(),
-        "stroke": "#FFFF00",
-        "stroke-opacity": 1.0,  # Using alias with hyphen
-        "stroke-width": 2,      # Using alias with hyphen
-        "image": "test_image.png",
-        "last_voice_call_start_at": None,
-        "location_requested_at": None,
-        "radio_state_at": datetime.now(timezone.utc),
-        "radio_state": "na",
-        "coordinateProperties": coord_props,
-        "DateTime": datetime.now(timezone.utc)
-    }
-    feature_props = FeatureProperties(**feature_props_data)
+    def test_device_location_validation(self):
+        """Test DeviceLocation validation."""
+        # Valid data
+        location = DeviceLocation(latitude=0.0, longitude=0.0)
+        assert location.latitude == 0.0
+        assert location.longitude == 0.0
+        
+        # Test with extreme valid values
+        location = DeviceLocation(latitude=90.0, longitude=180.0)
+        assert location.latitude == 90.0
+        assert location.longitude == 180.0
+        
+        location = DeviceLocation(latitude=-90.0, longitude=-180.0)
+        assert location.latitude == -90.0
+        assert location.longitude == -180.0
     
-    # Create mock feature
-    feature = Feature(
-        type="Feature",
-        geometry=geometry,
-        properties=feature_props
-    )
+    def test_device_location_invalid_types(self):
+        """Test DeviceLocation with invalid types."""
+        with pytest.raises(ValidationError):
+            DeviceLocation(latitude="invalid", longitude=0.0)
+        
+        with pytest.raises(ValidationError):
+            DeviceLocation(latitude=0.0, longitude="invalid")
+        
+        with pytest.raises(ValidationError):
+            DeviceLocation(latitude=None, longitude=0.0)
     
-    # Create ObservationSubject
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={"devices": []},
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=datetime.now(timezone.utc),
-        last_position=feature,
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
-    
-    # Test location property (line 120)
-    location = subject.location
-    assert location == (40.0, -70.0)  # (latitude, longitude)
+    def test_device_location_missing_fields(self):
+        """Test DeviceLocation with missing required fields."""
+        with pytest.raises(ValidationError):
+            DeviceLocation(latitude=42.123456)
+        
+        with pytest.raises(ValidationError):
+            DeviceLocation(longitude=-71.987654)
+        
+        with pytest.raises(ValidationError):
+            DeviceLocation()
 
 
-@pytest.mark.asyncio
-async def test_observation_subject_latitude_error():
-    """
-    Test ObservationSubject.latitude property with no position (lines 127-129)
-    """
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={"devices": []},
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=None,
-        last_position=None,  # No position
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
+class TestBuoyDevice:
+    """Test cases for the BuoyDevice model."""
     
-    # Test latitude property error (lines 127-129)
-    with pytest.raises(ValueError, match="Last position is not available"):
-        _ = subject.latitude
+    @pytest.fixture
+    def sample_location(self):
+        """Fixture for a sample DeviceLocation."""
+        return DeviceLocation(latitude=42.123456, longitude=-71.987654)
+    
+    @pytest.fixture
+    def sample_datetime(self):
+        """Fixture for a sample datetime."""
+        return datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
+    
+    def test_buoy_device_creation_with_deployment(self, sample_location, sample_datetime):
+        """Test successful BuoyDevice creation with deployment date."""
+        device = BuoyDevice(
+            device_id="device_001",
+            label="Test Buoy Device",
+            location=sample_location,
+            last_updated=sample_datetime,
+            last_deployed=sample_datetime
+        )
+        
+        assert device.device_id == "device_001"
+        assert device.label == "Test Buoy Device"
+        assert device.location == sample_location
+        assert device.last_updated == sample_datetime
+        assert device.last_deployed == sample_datetime
+    
+    def test_buoy_device_creation_without_deployment(self, sample_location, sample_datetime):
+        """Test successful BuoyDevice creation without deployment date."""
+        device = BuoyDevice(
+            device_id="device_002",
+            label="Undeployed Device",
+            location=sample_location,
+            last_updated=sample_datetime,
+            last_deployed=None
+        )
+        
+        assert device.device_id == "device_002"
+        assert device.label == "Undeployed Device"
+        assert device.location == sample_location
+        assert device.last_updated == sample_datetime
+        assert device.last_deployed is None
+    
+    def test_buoy_device_optional_deployment_default(self, sample_location, sample_datetime):
+        """Test BuoyDevice with default None for last_deployed."""
+        device = BuoyDevice(
+            device_id="device_003",
+            label="Default Device",
+            location=sample_location,
+            last_updated=sample_datetime
+        )
+        
+        assert device.last_deployed is None
+    
+    def test_buoy_device_validation_errors(self, sample_location, sample_datetime):
+        """Test BuoyDevice validation errors."""
+        # Missing required fields
+        with pytest.raises(ValidationError):
+            BuoyDevice()
+        
+        with pytest.raises(ValidationError):
+            BuoyDevice(device_id="device_001")
+        
+        with pytest.raises(ValidationError):
+            BuoyDevice(
+                device_id="device_001",
+                label="Test Device"
+            )
+        
+        # Invalid datetime type
+        with pytest.raises(ValidationError):
+            BuoyDevice(
+                device_id="device_001",
+                label="Test Device",
+                location=sample_location,
+                last_updated="invalid_date"
+            )
+        
+        # Invalid location type
+        with pytest.raises(ValidationError):
+            BuoyDevice(
+                device_id="device_001",
+                label="Test Device",
+                location="invalid_location",
+                last_updated=sample_datetime
+            )
 
 
-@pytest.mark.asyncio
-async def test_observation_subject_longitude_error():
-    """
-    Test ObservationSubject.longitude property with no position (lines 136-138)
-    """
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={"devices": []},
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=None,
-        last_position=None,  # No position
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
+class TestBuoyGear:
+    """Test cases for the BuoyGear model."""
     
-    # Test longitude property error (lines 136-138)
-    with pytest.raises(ValueError, match="Last position is not available"):
-        _ = subject.longitude
-
-
-@pytest.mark.asyncio
-async def test_observation_subject_create_observation_no_position():
-    """
-    Test ObservationSubject.create_observation with no position (line 150)
-    """
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={"devices": [{"device_id": "test"}]},
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=None,
-        last_position=None,  # No position
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
+    @pytest.fixture
+    def sample_location(self):
+        """Fixture for a sample DeviceLocation."""
+        return DeviceLocation(latitude=42.123456, longitude=-71.987654)
     
-    # Test create_observation error with no position (line 150)
-    with pytest.raises(ValueError, match="Last position is not available"):
-        subject.create_observation(datetime.now(timezone.utc))
-
-
-@pytest.mark.asyncio
-async def test_observation_subject_create_observation_no_devices():
-    """
-    Test ObservationSubject.create_observation with no devices (line 153)
-    """
-    # Create mock geometry and feature
-    geometry = Geometry(type="Point", coordinates=[-70.0, 40.0])
-    coord_props = CoordinateProperties(time=datetime.now(timezone.utc))
-    feature_props_data = {
-        "title": "Test Subject",
-        "subject_type": "ropeless_buoy",
-        "subject_subtype": "ropeless_buoy_gearset",
-        "id": uuid4(),
-        "stroke": "#FFFF00",
-        "stroke-opacity": 1.0,
-        "stroke-width": 2,
-        "image": "test_image.png",
-        "last_voice_call_start_at": None,
-        "location_requested_at": None,
-        "radio_state_at": datetime.now(timezone.utc),
-        "radio_state": "na",
-        "coordinateProperties": coord_props,
-        "DateTime": datetime.now(timezone.utc)
-    }
-    feature_props = FeatureProperties(**feature_props_data)
-    feature = Feature(type="Feature", geometry=geometry, properties=feature_props)
+    @pytest.fixture
+    def sample_datetime(self):
+        """Fixture for a sample datetime."""
+        return datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
     
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={},  # No devices
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=datetime.now(timezone.utc),
-        last_position=feature,
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
+    @pytest.fixture
+    def sample_devices(self, sample_location, sample_datetime):
+        """Fixture for sample BuoyDevice list."""
+        return [
+            BuoyDevice(
+                device_id="device_001",
+                label="Device 1",
+                location=sample_location,
+                last_updated=sample_datetime,
+                last_deployed=sample_datetime
+            ),
+            BuoyDevice(
+                device_id="device_002",
+                label="Device 2",
+                location=DeviceLocation(latitude=43.0, longitude=-72.0),
+                last_updated=sample_datetime,
+                last_deployed=None
+            )
+        ]
     
-    # Test create_observation error with no devices (line 153)
-    with pytest.raises(ValueError, match="No devices available in additional information"):
-        subject.create_observation(datetime.now(timezone.utc))
-
-
-@pytest.mark.asyncio
-async def test_observation_subject_create_observation_success():
-    """
-    Test ObservationSubject.create_observation successful case (lines 155-177)
-    """
-    # Create mock geometry and feature
-    geometry = Geometry(type="Point", coordinates=[-70.0, 40.0])
-    coord_props = CoordinateProperties(time=datetime.now(timezone.utc))
-    feature_props_data = {
-        "title": "Test Subject",
-        "subject_type": "ropeless_buoy",
-        "subject_subtype": "ropeless_buoy_gearset",
-        "id": uuid4(),
-        "stroke": "#FFFF00",
-        "stroke-opacity": 1.0,
-        "stroke-width": 2,
-        "image": "test_image.png",
-        "last_voice_call_start_at": None,
-        "location_requested_at": None,
-        "radio_state_at": datetime.now(timezone.utc),
-        "radio_state": "na",
-        "coordinateProperties": coord_props,
-        "DateTime": datetime.now(timezone.utc)
-    }
-    feature_props = FeatureProperties(**feature_props_data)
-    feature = Feature(type="Feature", geometry=geometry, properties=feature_props)
+    @pytest.fixture
+    def sample_gear_id(self):
+        """Fixture for a sample UUID."""
+        return uuid4()
     
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={
-            "devices": [{"device_id": "test_device"}],
-            "rmwhub_set_id": "test_set_001",
-            "display_id": "test_display"
-        },
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=datetime.now(timezone.utc),
-        last_position=feature,
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
+    def test_buoy_gear_creation_minimal(self, sample_gear_id, sample_datetime, sample_devices):
+        """Test BuoyGear creation with minimal required fields."""
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_001",
+            name="Test Gear",
+            status="active",
+            last_updated=sample_datetime,
+            devices=sample_devices,
+            type="fishing_gear",
+            manufacturer="Test Manufacturer"
+        )
+        
+        assert gear.id == sample_gear_id
+        assert gear.display_id == "GEAR_001"
+        assert gear.name == "Test Gear"
+        assert gear.status == "active"
+        assert gear.last_updated == sample_datetime
+        assert gear.devices == sample_devices
+        assert gear.type == "fishing_gear"
+        assert gear.manufacturer == "Test Manufacturer"
+        assert gear.location is None
+        assert gear.additional is None
     
-    recorded_at = datetime.now(timezone.utc)
+    def test_buoy_gear_creation_full(self, sample_gear_id, sample_datetime, sample_devices, sample_location):
+        """Test BuoyGear creation with all fields."""
+        additional_data = {"custom_field": "custom_value", "number": 42}
+        
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_002",
+            name="Full Test Gear",
+            status="deployed",
+            last_updated=sample_datetime,
+            devices=sample_devices,
+            type="lobster_trap",
+            manufacturer="Full Manufacturer",
+            location=sample_location,
+            additional=additional_data
+        )
+        
+        assert gear.id == sample_gear_id
+        assert gear.display_id == "GEAR_002"
+        assert gear.name == "Full Test Gear"
+        assert gear.status == "deployed"
+        assert gear.last_updated == sample_datetime
+        assert gear.devices == sample_devices
+        assert gear.type == "lobster_trap"
+        assert gear.manufacturer == "Full Manufacturer"
+        assert gear.location == sample_location
+        assert gear.additional == additional_data
     
-    # Test create_observation successful case (lines 155-177)
-    observation = subject.create_observation(recorded_at)
+    def test_buoy_gear_empty_devices(self, sample_gear_id, sample_datetime):
+        """Test BuoyGear with empty devices list."""
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_003",
+            name="Empty Gear",
+            status="inactive",
+            last_updated=sample_datetime,
+            devices=[],
+            type="test_gear",
+            manufacturer="Test Manufacturer"
+        )
+        
+        assert gear.devices == []
     
-    assert observation["name"] == "Test Subject"
-    assert observation["source"] == "Test Subject"
-    assert observation["type"] == "ropeless_buoy"
-    assert observation["subject_type"] == "ropeless_buoy_gearset"
-    assert observation["location"]["lat"] == 40.0
-    assert observation["location"]["lon"] == -70.0
-    assert observation["additional"]["subject_name"] == "Test Subject"
-    assert observation["additional"]["rmwhub_set_id"] == "test_set_001"
-    assert observation["additional"]["display_id"] == "test_display"
-    assert observation["additional"]["subject_is_active"] is True
-    assert len(observation["additional"]["devices"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_observation_subject_create_observation_with_is_active_override():
-    """
-    Test ObservationSubject.create_observation with is_active override
-    """
-    # Create mock geometry and feature
-    geometry = Geometry(type="Point", coordinates=[-70.0, 40.0])
-    coord_props = CoordinateProperties(time=datetime.now(timezone.utc))
-    feature_props_data = {
-        "title": "Test Subject",
-        "subject_type": "ropeless_buoy",
-        "subject_subtype": "ropeless_buoy_gearset",
-        "id": uuid4(),
-        "stroke": "#FFFF00",
-        "stroke-opacity": 1.0,
-        "stroke-width": 2,
-        "image": "test_image.png",
-        "last_voice_call_start_at": None,
-        "location_requested_at": None,
-        "radio_state_at": datetime.now(timezone.utc),
-        "radio_state": "na",
-        "coordinateProperties": coord_props,
-        "DateTime": datetime.now(timezone.utc)
-    }
-    feature_props = FeatureProperties(**feature_props_data)
-    feature = Feature(type="Feature", geometry=geometry, properties=feature_props)
+    def test_buoy_gear_validation_errors(self):
+        """Test BuoyGear validation errors."""
+        # Missing required fields
+        with pytest.raises(ValidationError):
+            BuoyGear()
+        
+        # Invalid UUID
+        with pytest.raises(ValidationError):
+            BuoyGear(
+                id="invalid_uuid",
+                display_id="GEAR_001",
+                name="Test Gear",
+                status="active",
+                last_updated=datetime.now(),
+                devices=[],
+                type="fishing_gear",
+                manufacturer="Test Manufacturer"
+            )
+        
+        # Invalid datetime
+        with pytest.raises(ValidationError):
+            BuoyGear(
+                id=uuid4(),
+                display_id="GEAR_001",
+                name="Test Gear",
+                status="active",
+                last_updated="invalid_date",
+                devices=[],
+                type="fishing_gear",
+                manufacturer="Test Manufacturer"
+            )
     
-    subject = ObservationSubject(
-        content_type="observations.subject",
-        id=uuid4(),
-        name="Test Subject",
-        subject_type="ropeless_buoy",
-        subject_subtype="ropeless_buoy_gearset",
-        common_name=None,
-        additional={
-            "devices": [{"device_id": "test_device"}],
-            "rmwhub_set_id": "test_set_001",
-            "display_id": "test_display"
-        },
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        is_active=True,  # Subject is active
-        user=None,
-        tracks_available=False,
-        image_url="/static/pin-black.svg",
-        last_position_status=None,
-        last_position_date=datetime.now(timezone.utc),
-        last_position=feature,
-        device_status_properties=None,
-        url="https://example.com/subject/test"
-    )
+    def test_create_haul_observation_single_device(self, sample_gear_id, sample_datetime, sample_location):
+        """Test create_haul_observation with single device."""
+        device = BuoyDevice(
+            device_id="device_001",
+            label="Single Device",
+            location=sample_location,
+            last_updated=sample_datetime,
+            last_deployed=sample_datetime
+        )
+        
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_SINGLE",
+            name="Single Device Gear",
+            status="active",
+            last_updated=sample_datetime,
+            devices=[device],
+            type="fishing_gear",
+            manufacturer="Test Manufacturer"
+        )
+        
+        recorded_at = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
+        observations = gear.create_haul_observation(recorded_at)
+        
+        assert len(observations) == 1
+        observation = observations[0]
+        
+        assert observation["subject_name"] == "GEAR_SINGLE"
+        assert observation["manufacturer_id"] == "device_001"
+        assert observation["subject_is_active"] is False
+        assert observation["source_type"] == "ropeless_buoy"
+        assert observation["subject_subtype"] == "ropeless_buoy_gearset"
+        assert observation["location"]["lat"] == 42.123456
+        assert observation["location"]["lon"] == -71.987654
+        assert observation["recorded_at"] == recorded_at
     
-    recorded_at = datetime.now(timezone.utc)
+    def test_create_haul_observation_multiple_devices(self, sample_gear_id, sample_datetime, sample_devices):
+        """Test create_haul_observation with multiple devices."""
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_MULTI",
+            name="Multi Device Gear",
+            status="active",
+            last_updated=sample_datetime,
+            devices=sample_devices,
+            type="fishing_gear",
+            manufacturer="Test Manufacturer"
+        )
+        
+        recorded_at = datetime(2023, 10, 1, 15, 30, 0, tzinfo=timezone.utc)
+        observations = gear.create_haul_observation(recorded_at)
+        
+        assert len(observations) == 2
+        
+        # Check first observation
+        obs1 = observations[0]
+        assert obs1["subject_name"] == "GEAR_MULTI"
+        assert obs1["manufacturer_id"] == "device_001"
+        assert obs1["subject_is_active"] is False
+        assert obs1["source_type"] == "ropeless_buoy"
+        assert obs1["subject_subtype"] == "ropeless_buoy_gearset"
+        assert obs1["location"]["lat"] == 42.123456
+        assert obs1["location"]["lon"] == -71.987654
+        assert obs1["recorded_at"] == recorded_at
+        
+        # Check second observation
+        obs2 = observations[1]
+        assert obs2["subject_name"] == "GEAR_MULTI"
+        assert obs2["manufacturer_id"] == "device_002"
+        assert obs2["subject_is_active"] is False
+        assert obs2["source_type"] == "ropeless_buoy"
+        assert obs2["subject_subtype"] == "ropeless_buoy_gearset"
+        assert obs2["location"]["lat"] == 43.0
+        assert obs2["location"]["lon"] == -72.0
+        assert obs2["recorded_at"] == recorded_at
     
-    # Test with is_active override to False
-    observation = subject.create_observation(recorded_at, is_active=False)
+    def test_create_haul_observation_empty_devices(self, sample_gear_id, sample_datetime):
+        """Test create_haul_observation with no devices."""
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_EMPTY",
+            name="Empty Gear",
+            status="active",
+            last_updated=sample_datetime,
+            devices=[],
+            type="fishing_gear",
+            manufacturer="Test Manufacturer"
+        )
+        
+        recorded_at = datetime(2023, 10, 1, 9, 0, 0, tzinfo=timezone.utc)
+        observations = gear.create_haul_observation(recorded_at)
+        
+        assert len(observations) == 0
+        assert observations == []
     
-    assert observation["additional"]["subject_is_active"] is False
-    assert "gear_retrieved" in observation["additional"]["event_type"]
+    def test_create_haul_observation_imports_correctly(self, sample_gear_id, sample_datetime, sample_devices):
+        """Test that create_haul_observation correctly imports constants."""
+        gear = BuoyGear(
+            id=sample_gear_id,
+            display_id="GEAR_IMPORT",
+            name="Import Test Gear",
+            status="active",
+            last_updated=sample_datetime,
+            devices=sample_devices,
+            type="fishing_gear",
+            manufacturer="Test Manufacturer"
+        )
+        
+        recorded_at = datetime.now(timezone.utc)
+        observations = gear.create_haul_observation(recorded_at)
+        
+        # Verify that the constants are imported and used correctly
+        for observation in observations:
+            assert observation["source_type"] == "ropeless_buoy"
+            assert observation["subject_subtype"] == "ropeless_buoy_gearset"

@@ -57,7 +57,12 @@ class RmwHubAdapter:
         """
 
         response = await self.rmw_client.search_hub(start_datetime, status)
-        response_json = json.loads(response)
+        
+        try:
+            response_json = json.loads(response)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to download data from RMW Hub API. Invalid JSON response: {response}")
+            return []
 
         if "sets" not in response_json:
             logger.error(f"Failed to download data from RMW Hub API. Error: {response}")
@@ -242,8 +247,6 @@ class RmwHubAdapter:
                     )
                     return 0, {}
 
-            return 0, {}
-
         except Exception as e:
             logger.error(f"Error in upload task: {e}")
             await log_action_activity(
@@ -266,20 +269,28 @@ class RmwHubAdapter:
         for i, device in enumerate(er_gear.devices):
             traps.append(
                 Trap(
-                    id=device.id,
+                    id=device.device_id,
                     sequence=i + 1,
                     latitude=device.location.latitude,
                     longitude=device.location.longitude,
-                    deploy_datetime_utc=device.last_deployed,
+                    deploy_datetime_utc=device.last_deployed.isoformat() if device.last_deployed else None,
                     surface_datetime_utc=None,
-                    retrieved_datetime_utc=device.last_updated if er_gear.status == "retrieved" else None, 
+                    retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status == "retrieved" else None,
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
+                    accuracy="unknown",
+                    release_type=None,
+                    is_on_end=False,
                 )
             )
         gear_set = GearSet(
-            id=er_gear.id,
+            vessel_id="unknown",
+            id=str(er_gear.id),
+            deployment_type="unknown",
+            traps_in_set=len(traps),
+            trawl_path="",
+            share_with=[],
             traps=traps,
-            when_updated_utc=er_gear.last_updated,
+            when_updated_utc=er_gear.last_updated.isoformat(),
         )
         return gear_set
 
