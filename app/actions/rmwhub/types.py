@@ -1,8 +1,7 @@
 import hashlib
 import logging
-import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from dateparser import parse as parse_date
 from pydantic import BaseModel, NoneStr, validator
@@ -101,97 +100,40 @@ class GearSet(BaseModel):
     def __hash__(self):
         return hash((self.id, self.deployment_type, tuple(self.traps)))
 
-    def _create_observation_record(
-        self,
-        subject_name: str,
-        source_name: str,
-        lat: float,
-        lon: float,
-        is_active: bool,
-        recorded_at: str,
-    ) -> Dict[str, Any]:
-        """Return an observation record with the given parameters."""
-        raw = self.dict()
-        return {
-            "subject_name": subject_name,
-            "subject_type": SUBJECT_SUBTYPE,
-            "recorded_at": recorded_at,
-            "source_type": SOURCE_TYPE,
-            "manufacturer_id": source_name,
-            "is_active": is_active,
-            "location": {"lat": lat, "lon": lon},
-            "additional": {
-                "event_type": GEAR_DEPLOYED_EVENT if is_active else GEAR_RETRIEVED_EVENT,
-            },
-            "source_additional": {"raw": raw},
-        }
 
-    def _build_observations(
-        self,
-        is_active: bool,
-        recorded_at: str,
-    ) -> List[Dict[str, Any]]:
+    async def build_observations(self) -> List:
         """
-        Return one or more observations for deployment or retrieval events.
-        Creates one observation per trap in the gearset.
-        """
-        observations = []
-        
-        # Use set_id as subject_name (all traps in same gearset share this)
-        subject_name = self.id
-        
-        for trap in self.traps:
-            # Use trap_id as manufacturer_id
-            source_name = trap.id
-            
-            # Determine if this specific trap is active
-            trap_is_active = trap.status == "deployed" if is_active else False
-            
-            observation = self._create_observation_record(
-                subject_name=subject_name,
-                source_name=source_name,
-                lat=trap.latitude,
-                lon=trap.longitude,
-                is_active=trap_is_active,
-                recorded_at=recorded_at,
-            )
-            observations.append(observation)
-
-        return observations
-
-    async def create_observations(self) -> List:
-        """
-        Create observations for the gear set following EdgeTech pattern.
-        Creates one observation per trap instead of one per gearset.
+        Build observations payload for the gear set as a single gear entity.
         """
         if not self.traps:
             return []
-        
-        # Determine overall status based on all traps
-        deployed_count = sum(1 for trap in self.traps if trap.status == "deployed")
-        is_active = deployed_count > 0
-        
-        recorded_at = self.when_updated_utc
-        
-        observations = self._build_observations(
-            is_active=is_active,
-            recorded_at=recorded_at,
-        )
+
+        observations = []
+        for trap in self.traps:
+            recorded_at = trap.get_latest_update_time()
+
+            if trap.status == "deployed":
+                event_type = GEAR_DEPLOYED_EVENT
+            elif trap.status == "retrieved":
+                event_type = GEAR_RETRIEVED_EVENT
+            else:
+                raise ValueError(f"Unknown trap status: {trap.status}")
+            
+            observation = {
+                "location": {
+                    "lat": trap.latitude,
+                    "lon": trap.longitude
+                },
+                "recorded_at": recorded_at,
+                "source_type": "ropeless_gear",
+                "subject_subtype": "ropeless_buoy_gearset",
+                "subject_name": self.id,
+                "manufacturer_id": trap.id,
+                "additional": {
+                    "event_type": event_type,
+                }
+            }
+
+            observations.append(observation)
 
         return observations
-
-    async def get_trap_ids(self) -> set:
-        """
-        Get the trap IDs for the gear set.
-        """
-        return {
-            geartrap.id.replace("e_", "").replace("rmwhub_", "")
-            for geartrap in self.traps
-        }
-
-    async def is_visited(self, visited: set) -> bool:
-        """
-        Check if the gearset has been visited.
-        """
-        traps_in_gearset = await self.get_trap_ids()
-        return traps_in_gearset & visited

@@ -1,24 +1,19 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, AsyncIterator
 
 import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
-from enum import Enum
+from datetime import datetime
 
-import backoff
-import httpx
 import pytz
-from dateparser import parse as parse_date
-from fastapi.encoders import jsonable_encoder
 from gundi_core.schemas.v2.gundi import LogLevel
 from erclient import ERClient
 from app.services.activity_logger import log_action_activity
 from ..buoy.client import BuoyClient
 from ..buoy.types import BuoyGear
 from .client import RmwHubClient
-from .types import GearSet, Trap, SOURCE_TYPE, SUBJECT_SUBTYPE, GEAR_DEPLOYED_EVENT, GEAR_RETRIEVED_EVENT, EPOCH
+from .types import GearSet, Trap, SOURCE_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +31,13 @@ class RmwHubAdapter:
     ):
         self.integration_id = integration_id
         self.rmw_client = RmwHubClient(api_key, rmw_url)
-        self.er_client = ERClient(service_root = er_destination, token = er_token)
-        self.gear_client = BuoyClient(er_token, er_destination)  # Updated to use BuoyClient
+        self.gear_client = BuoyClient(
+            er_token, 
+            er_destination,
+            default_timeout=kwargs.get('gear_timeout', 45.0),
+            connect_timeout=kwargs.get('gear_connect_timeout', 10.0),
+            read_timeout=kwargs.get('gear_read_timeout', 45.0),
+        )
         self.er_subject_name_to_subject_mapping = {}
         self.options = kwargs.get("options", {})
 
@@ -64,63 +64,6 @@ class RmwHubAdapter:
             return []
 
         return self.convert_to_sets(response_json)
-
-    @backoff.on_exception(
-        backoff.expo, (httpx.ReadTimeout, httpx.ConnectTimeout), max_tries=5
-    )
-    async def _get_newest_set_from_rmwhub(self, trap_list):
-        """
-        Downloads data from the RMW Hub API using the search_own endpoint.
-        ref: https://ropeless.network/api/docs#/Download
-        """
-
-        if not trap_list:
-            return None
-
-        sets = await self.search_own(trap_id = trap_list[0], status = "deployed")
-
-        newest = None
-        newestDate = None
-        for gearset in sets:
-            set_traps = sorted([trap.id for trap in gearset.traps])
-            if set_traps == trap_list:
-                datecomp = parse_date(gearset.when_updated_utc)
-                if not newestDate or (datecomp > newestDate):
-                    newest = gearset
-                    newestDate = datecomp
-
-        return newest
-
-    async def search_own(self, trap_id=None, status = None) -> dict:
-        """
-        Downloads data from the RMWHub API using the search_own endpoint.
-        ref: https://ropeless.network/api/docs#/Download
-        """
-
-        url = self.rmw_client.rmw_url + "/search_own/"
-
-        data = {"format_version": 0.1, "api_key": self.rmw_client.api_key}
-
-        if trap_id:
-            data["trap_id"] = trap_id
-
-        if status:
-            data["status"] = status
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
-
-        if response.status_code != 200:
-            logger.error(
-                f"Failed to download data from RMW Hub API. Error: {response.status_code} - {response.text}"
-            )
-            return []
-
-        try:
-            return self.convert_to_sets(response.json())
-        except (ValueError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse JSON response from RMW Hub API: {e}")
-            return []
 
     def convert_to_sets(self, response_json: dict) -> List[GearSet]:
 
@@ -167,46 +110,45 @@ class RmwHubAdapter:
         """
         Process the sets from the RMW Hub API.
         """
-
-        # Normalize the extracted data into a list of observations following to the Gundi schema:
+        # Normalize the extracted data into a list of observations following the new Data Model
         observations = []
 
         for gearset in rmw_sets:
-            new_observations = await gearset.create_observations()
+            new_observations = await gearset.build_observations()
             observations.extend(new_observations)
 
         return observations
 
-    def _create_traps_gearsets_mapping_key(self, traps_ids: List[str]) -> str:
-        """
-        Create a unique key for the traps and gearsets mapping.
-        """
-        trap_ids_sorted = sorted(traps_ids)
-        concat_devices = "_".join(trap_ids_sorted)
 
-        # Generate a short hash based on the sorted device IDs
-        display_id_hash = hashlib.sha256(str(concat_devices).encode()).hexdigest()[:12]
-
-        return display_id_hash
-
-    async def get_er_gears(self, start_datetime: datetime = None) -> List[BuoyGear]:
+    async def iter_er_gears(self, start_datetime: datetime = None) -> AsyncIterator[BuoyGear]:
         """
-        Get gears from EarthRanger for the RMW Hub integration.
+        Iterate over gears from EarthRanger for the RMW Hub integration.
+        
+        This method uses an async generator for memory-efficient streaming
+        of gears without loading all data into memory at once.
+        
+        Args:
+            start_datetime: Filter gears updated after this datetime
+            
+        Yields:
+            BuoyGear objects one at a time
         """
-        return await self.gear_client.get_gears(
-            start_datetime=start_datetime, source_type=SOURCE_TYPE
-        )
+        # Build query parameters
+        params = {}
+        if start_datetime:
+            params['updated_after'] = start_datetime.isoformat()
+        params['source_type'] = SOURCE_TYPE
+        
+        async for gear in self.gear_client.iter_gears(params=params):
+            yield gear
 
     async def process_upload(
         self,
         start_datetime: datetime,
-        previous_start_datetime: datetime = None,
-        integration_logger=None,
-    ) -> Tuple[
-        List[datetime], List[datetime], List[datetime], List[Tuple[str, Exception]]
-    ]:
+    ) -> Tuple[int, dict]:
         """
         Process updates to be sent to the RMW Hub API.
+        Returns the number of updates and the RMW Hub response.
         """
         # Start Activity Logs for the upload task
         logger.info("Starting upload task")
@@ -218,11 +160,26 @@ class RmwHubAdapter:
         )
 
         try:
-            # Get updated gears from EarthRanger
-            er_gears = await self.get_er_gears(start_datetime=start_datetime)
-            logger.info(f"Found {len(er_gears)} gears in EarthRanger")
+            # Use streaming approach for better memory efficiency
+            rmw_updates = []
+            errors = []
+            gear_count = 0
 
-            if not er_gears:
+            # Stream gears and process them one by one
+            async for er_gear in self.iter_er_gears(start_datetime=start_datetime):
+                gear_count += 1
+                try:
+                    rmw_update = await self._create_rmw_update_from_er_gear(er_gear, {})
+                    if rmw_update:
+                        rmw_updates.append(rmw_update)
+                        logger.info(f"Processed gear {er_gear.name}")
+                except Exception as e:
+                    logger.error(f"Error processing gear {er_gear.name}: {e}")
+                    errors.append((f"Error processing gear {er_gear.name}", e))
+
+            logger.info(f"Found {gear_count} gears in EarthRanger")
+
+            if not rmw_updates:
                 logger.info("No gear found in EarthRanger, skipping upload.")
                 await log_action_activity(
                     integration_id=self.integration_uuid,
@@ -231,58 +188,61 @@ class RmwHubAdapter:
                     log="No gear found in EarthRanger, skipping upload.",
                     parent_log_id=upload_task_id,
                 )
-                return [], [], [], []
-
-            # Create a mapping of display IDs to gears for quick lookup
-            display_id_to_gear_mapping = await self.create_display_id_to_gear_mapping(
-                er_gears
-            )
-
-            # Process each gear and create RMW updates
-            rmw_updates = []
-            processed_times = []
-            success_times = []
-            error_times = []
-            errors = []
-
-            for er_gear in er_gears:
-                try:
-                    rmw_update = await self._create_rmw_update_from_er_gear(
-                        er_gear, display_id_to_gear_mapping
-                    )
-                    if rmw_update:
-                        rmw_updates.append(rmw_update)
-                        processed_times.append(datetime.now())
-                        logger.info(f"Processed gear {er_gear.name}")
-                except Exception as e:
-                    logger.error(f"Error processing gear {er_gear.name}: {e}")
-                    error_times.append(datetime.now())
-                    errors.append((f"Error processing gear {er_gear.name}", e))
+                return 0, {}
 
             if rmw_updates:
                 try:
                     # Upload updates to RMW Hub
                     response = await self.rmw_client.upload_data(rmw_updates)
                     if response.status_code == 200:
-                        success_times.extend([datetime.now()] * len(rmw_updates))
-                        logger.info(f"Successfully uploaded {len(rmw_updates)} updates to RMW Hub")
+                        response_data = response.json()
+                        result = response_data.get("result", {})
+                        trap_count = result.get("trap_count", 0)
+                        failed_sets = result.get("failed_sets", [])
+                        
+                        # Log failed sets if any
+                        if failed_sets:
+                            logger.warning(f"Failed to upload {len(failed_sets)} sets: {failed_sets}")
+                            await log_action_activity(
+                                integration_id=self.integration_uuid,
+                                action_log_type="upload",
+                                level=LogLevel.WARNING,
+                                log=f"Failed to upload {len(failed_sets)} sets: {failed_sets}",
+                                parent_log_id=upload_task_id,
+                            )
+                        
+                        logger.info(f"Successfully uploaded {trap_count} traps to RMW Hub")
                         await log_action_activity(
                             integration_id=self.integration_uuid,
                             action_log_type="upload",
                             level=LogLevel.INFO,
-                            log=f"Successfully uploaded {len(rmw_updates)} updates to RMW Hub",
+                            log=f"Successfully uploaded {trap_count} traps to RMW Hub",
                             parent_log_id=upload_task_id,
                         )
-                    else:
-                        error_times.extend([datetime.now()] * len(rmw_updates))
-                        errors.append(("Upload failed", f"Status: {response.status_code}, Content: {response.content}"))
-                        logger.error(f"Upload failed with status {response.status_code}")
-                except Exception as e:
-                    error_times.extend([datetime.now()] * len(rmw_updates))
-                    errors.append(("Upload error", e))
-                    logger.error(f"Upload error: {e}")
 
-            return processed_times, success_times, error_times, errors
+                        return trap_count, response_data
+                    else:
+                        logger.error(f"Upload failed with status {response.status_code}")
+                        await log_action_activity(
+                            integration_id=self.integration_uuid,
+                            action_log_type="upload",
+                            level=LogLevel.ERROR,
+                            log=f"Upload failed with status {response.status_code}",
+                            parent_log_id=upload_task_id,
+                        )
+                        return 0, {}
+                except Exception as e:
+                    logger.error(f"Upload error: {e}")
+                    await log_action_activity(
+                        integration_id=self.integration_uuid,
+                        action_log_type="upload",
+                        level=LogLevel.ERROR,
+                        log=f"Upload error: {e}",
+                        parent_log_id=upload_task_id,
+                    )
+                    return 0, {}
+
+            return 0, {}
 
         except Exception as e:
             logger.error(f"Error in upload task: {e}")
@@ -293,74 +253,34 @@ class RmwHubAdapter:
                 log=f"Error in upload task: {e}",
                 parent_log_id=upload_task_id,
             )
-            return [], [], [datetime.now()], [("Upload task error", e)]
+            return 0, []
 
     async def _create_rmw_update_from_er_gear(
         self,
         er_gear: BuoyGear,
-        display_id_to_gear_mapping: dict,
     ) -> Optional[GearSet]:
         """
         Create an RMW update from an EarthRanger gear.
         """
-        # Extract deployment information from the gear
-        additional_data = er_gear.additional or {}
-        rmw_set_id = additional_data.get("rmwhub_set_id")
-        
-        if not rmw_set_id:
-            logger.warning(f"Gear {er_gear.name} missing rmwhub_set_id, skipping")
-            return None
-
-        # Get the most recent location and timestamp
-        last_location = er_gear.location
-        last_updated = er_gear.last_updated
-
-        # Convert last_updated to string format for GearSet
-        last_updated_str = last_updated
-        if hasattr(last_updated_str, 'isoformat'):
-            last_updated_str = last_updated_str.isoformat()
-        elif not isinstance(last_updated_str, str):
-            last_updated_str = str(last_updated_str)
-
-        # Create traps from devices
         traps = []
         for i, device in enumerate(er_gear.devices):
-            device_location = device.location if hasattr(device, 'location') else last_location
-            
-            # Get deploy datetime and convert to string if needed
-            deploy_datetime = getattr(device, 'last_deployed', last_updated)
-            if hasattr(deploy_datetime, 'isoformat'):
-                deploy_datetime = deploy_datetime.isoformat()
-            elif not isinstance(deploy_datetime, str):
-                deploy_datetime = str(deploy_datetime)
-            
-            trap = Trap(
-                id=device.device_id if hasattr(device, 'device_id') else f"device_{i}",
-                sequence=1 if getattr(device, 'label', '') == "a" else 2,
-                latitude=device_location.latitude if hasattr(device_location, 'latitude') else last_location.get("latitude", 0.0),
-                longitude=device_location.longitude if hasattr(device_location, 'longitude') else last_location.get("longitude", 0.0),
-                deploy_datetime_utc=deploy_datetime,
-                surface_datetime_utc=None,
-                retrieved_datetime_utc=None,
-                status="deployed" if er_gear.is_active else "retrieved",
-                accuracy="high",
-                release_type="",
-                is_on_end=getattr(device, 'label', '') == "a",
+            traps.append(
+                Trap(
+                    id=device.id,
+                    sequence=i + 1,
+                    latitude=device.location.latitude,
+                    longitude=device.location.longitude,
+                    deploy_datetime_utc=device.last_deployed,
+                    surface_datetime_utc=None,
+                    retrieved_datetime_utc=device.last_updated if er_gear.status == "retrieved" else None, 
+                    status="deployed" if er_gear.status == "deployed" else "retrieved",
+                )
             )
-            traps.append(trap)
-
-        # Create the gear set
         gear_set = GearSet(
-            vessel_id=additional_data.get("vessel_id", "unknown"),
-            id=rmw_set_id,
-            deployment_type=additional_data.get("deployment_type", "unknown"),
-            traps_in_set=len(traps),
-            trawl_path="",
-            share_with=[],
+            id=er_gear.id,
             traps=traps,
-            when_updated_utc=last_updated_str,
+            when_updated_utc=er_gear.last_updated,
         )
-
         return gear_set
 
     async def create_display_id_to_gear_mapping(self, er_gears: List[BuoyGear]) -> dict:
@@ -369,6 +289,8 @@ class RmwHubAdapter:
         """
         mapping = {}
         for gear in er_gears:
+            if gear.manufacturer == "rmwhub":
+                continue  # Skip RMW Hub gears to avoid uploading their own data
             additional_data = gear.additional or {}
             display_id = additional_data.get("display_id")
             if display_id:

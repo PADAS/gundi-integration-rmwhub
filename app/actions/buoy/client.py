@@ -1,42 +1,117 @@
-import json
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncIterator
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from .types import BuoyGear, BuoyDevice, DeviceLocation
 
 logger = logging.getLogger(__name__)
 
-
 class BuoyClient:
     """Client for interacting with EarthRanger Gear API."""
     
-    def __init__(self, er_token: str, er_site: str):
+    def __init__(
+        self, 
+        er_token: str, 
+        er_site: str,
+        default_timeout: float = 30.0,
+        connect_timeout: float = 5.0,
+        read_timeout: float = 30.0,
+    ):
         self.er_token = er_token
-        self.er_site = er_site
+        self.er_site = self._sanitize_base_url(er_site)
+        self.default_timeout = httpx.Timeout(
+            timeout=default_timeout,
+            connect=connect_timeout,
+            read=read_timeout
+        )
         self.headers = {
             "Authorization": f"Bearer {self.er_token}",
             "Content-Type": "application/json",
         }
 
-    async def get_er_gears(
+    def _sanitize_base_url(self, url: str) -> str:
+        """
+        Sanitize the base URL to ensure proper format.
+        
+        Args:
+            url: Base URL to sanitize
+            
+        Returns:
+            Properly formatted base URL
+        """
+        if not url:
+            raise ValueError("Base URL cannot be empty")
+        
+        # Add https:// if no scheme is provided
+        if not url.startswith(('http://', 'https://')):
+            url = f"https://{url}"
+        
+        # Ensure URL ends with a slash
+        if not url.endswith('/'):
+            url += '/'
+        
+        # Validate the URL structure
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            raise ValueError(f"Invalid URL format: {url}")
+        
+        return url
+
+    @staticmethod
+    def create_timeout(
+        timeout: float = 30.0,
+        connect: float = 5.0,
+        read: float = 30.0,
+        write: float = 10.0,
+        pool: float = 5.0,
+    ) -> httpx.Timeout:
+        """
+        Create a custom timeout configuration.
+        
+        Args:
+            timeout: Total timeout for the entire request
+            connect: Timeout for establishing a connection
+            read: Timeout for reading data from the server
+            write: Timeout for writing data to the server
+            pool: Timeout for acquiring a connection from the pool
+            
+        Returns:
+            httpx.Timeout object with the specified settings
+        """
+        return httpx.Timeout(
+            timeout=timeout,
+            connect=connect,
+            read=read,
+            write=write,
+            pool=pool,
+        )
+
+    async def iter_gears(
         self,
         params: Optional[Dict[str, Any]] = None,
-    ) -> List[BuoyGear]:
+        timeout: Optional[httpx.Timeout] = None,
+    ) -> AsyncIterator[BuoyGear]:
         """
-        Get gears from EarthRanger API.
+        Iterate over gears from EarthRanger API using async generator.
+        
+        This method yields gears one by one without loading all pages into memory,
+        making it more memory-efficient for large datasets.
         
         Args:
             params: Optional query parameters
+            timeout: Optional timeout settings (overrides defaults)
             
-        Returns:
-            List of BuoyGear objects
+        Yields:
+            BuoyGear objects one at a time
         """
-        url = f"{self.er_site}gear/"
-        items = []
-
-        async with httpx.AsyncClient() as client:
+        url = urljoin(self.er_site, "gear/")
+        
+        # Use provided timeout or fall back to default
+        client_timeout = timeout or self.default_timeout
+        
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
             while url:
                 response = await client.get(url, headers=self.headers, params=params)
                 
@@ -59,71 +134,14 @@ class BuoyClient:
                     break
 
                 results = page_data["results"]
-                items.extend(results)
+                
+                # Yield each gear individually
+                for item in results:
+                    yield self._parse_gear(item)
 
                 url = page_data.get("next")
                 # Clear params for subsequent requests (they're already in the next URL)
                 params = None
-
-        if len(items) == 0:
-            logger.warning("No gears found")
-
-        return [self._parse_gear(item) for item in items]
-
-    async def create_gear(self, gear_data: Dict[str, Any]) -> Optional[BuoyGear]:
-        """
-        Create a new gear in EarthRanger.
-        
-        Args:
-            gear_data: Gear data to create
-            
-        Returns:
-            Created BuoyGear object or None if failed
-        """
-        url = f"{self.er_site}gear/"
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url, 
-                headers=self.headers, 
-                json=gear_data
-            )
-            
-            if response.status_code not in [200, 201]:
-                logger.error(
-                    f"Failed to create gear. Status code: {response.status_code} Body: {response.text}"
-                )
-                return None
-            
-            return self._parse_gear(response.json())
-
-    async def update_gear(self, gear_id: str, gear_data: Dict[str, Any]) -> Optional[BuoyGear]:
-        """
-        Update an existing gear in EarthRanger.
-        
-        Args:
-            gear_id: ID of the gear to update
-            gear_data: Updated gear data
-            
-        Returns:
-            Updated BuoyGear object or None if failed
-        """
-        url = f"{self.er_site}gear/{gear_id}/"
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.patch(
-                url, 
-                headers=self.headers, 
-                json=gear_data
-            )
-            
-            if response.status_code != 200:
-                logger.error(
-                    f"Failed to update gear {gear_id}. Status code: {response.status_code} Body: {response.text}"
-                )
-                return None
-            
-            return self._parse_gear(response.json())
 
     def _parse_gear(self, data: Dict[str, Any]) -> BuoyGear:
         """
