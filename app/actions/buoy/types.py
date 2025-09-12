@@ -5,6 +5,10 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+SOURCE_TYPE = "ropeless_buoy"
+SUBJECT_SUBTYPE = "ropeless_buoy_gearset"
+GEAR_DEPLOYED_EVENT = "gear_deployed"
+GEAR_RETRIEVED_EVENT = "gear_retrieved"
 class Environment(Enum):
     DEV = "Buoy Dev"
     STAGE = "Buoy Staging"
@@ -39,15 +43,13 @@ class BuoyGear(BaseModel):
         """
         Create an observation record for hauling the buoy gear.
         """
-        from app.actions.rmwhub.types import SOURCE_TYPE, SUBJECT_SUBTYPE
 
         return [
             {
-                "subject_name": self.display_id,
-                "manufacturer_id": device.device_id,
-                "subject_is_active": False,
+                "source_name": self.display_id,
+                "source": device.device_id,
                 "source_type": SOURCE_TYPE,
-                "subject_subtype": SUBJECT_SUBTYPE,
+                "subject_type": SUBJECT_SUBTYPE,
                 "location": {
                     "lat": device.location.latitude,
                     "lon": device.location.longitude,

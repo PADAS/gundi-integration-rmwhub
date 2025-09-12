@@ -1,4 +1,3 @@
-import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -6,12 +5,10 @@ from typing import List, Optional
 from dateparser import parse as parse_date
 from pydantic import BaseModel, NoneStr, validator
 
+from app.actions.buoy.types import GEAR_DEPLOYED_EVENT, GEAR_RETRIEVED_EVENT, SOURCE_TYPE, SUBJECT_SUBTYPE
+
 logger = logging.getLogger(__name__)
 
-SOURCE_TYPE = "ropeless_buoy"
-SUBJECT_SUBTYPE = "ropeless_buoy_gearset"
-GEAR_DEPLOYED_EVENT = "gear_deployed"
-GEAR_RETRIEVED_EVENT = "gear_retrieved"
 EPOCH = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc).isoformat()
 
 
@@ -120,17 +117,18 @@ class GearSet(BaseModel):
                 raise ValueError(f"Unknown trap status: {trap.status}")
             
             observation = {
+                "source_name": self.id,
+                "source": trap.id,
                 "location": {
                     "lat": trap.latitude,
                     "lon": trap.longitude
                 },
                 "recorded_at": recorded_at,
-                "source_type": "ropeless_gear",
-                "subject_subtype": "ropeless_buoy_gearset",
-                "subject_name": self.id,
-                "manufacturer_id": trap.id,
+                "source_type": SOURCE_TYPE,
+                "subject_type": SUBJECT_SUBTYPE,
                 "additional": {
                     "event_type": event_type,
+                    "raw": self.dict()
                 }
             }
 

@@ -269,28 +269,20 @@ class RmwHubAdapter:
         for i, device in enumerate(er_gear.devices):
             traps.append(
                 Trap(
-                    id=device.device_id,
+                    id=device.id,
                     sequence=i + 1,
                     latitude=device.location.latitude,
                     longitude=device.location.longitude,
-                    deploy_datetime_utc=device.last_deployed.isoformat() if device.last_deployed else None,
+                    deploy_datetime_utc=device.last_deployed,
                     surface_datetime_utc=None,
-                    retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status == "retrieved" else None,
+                    retrieved_datetime_utc=device.last_updated if er_gear.status == "retrieved" else None, 
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
-                    accuracy="unknown",
-                    release_type=None,
-                    is_on_end=False,
                 )
             )
         gear_set = GearSet(
-            vessel_id="unknown",
-            id=str(er_gear.id),
-            deployment_type="unknown",
-            traps_in_set=len(traps),
-            trawl_path="",
-            share_with=[],
+            id=er_gear.id,
             traps=traps,
-            when_updated_utc=er_gear.last_updated.isoformat(),
+            when_updated_utc=er_gear.last_updated,
         )
         return gear_set
 
