@@ -48,7 +48,7 @@ class BuoyGear(BaseModel):
             {
                 "source_name": self.display_id,
                 "source": device.device_id,
-                "source_type": SOURCE_TYPE,
+                "type": SOURCE_TYPE,
                 "subject_type": SUBJECT_SUBTYPE,
                 "location": {
                     "lat": device.location.latitude,

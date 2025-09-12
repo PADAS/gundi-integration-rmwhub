@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from app.actions.buoy.types import Environment, DeviceLocation, BuoyDevice, BuoyGear
+from app.actions.buoy.types import SOURCE_TYPE, SUBJECT_SUBTYPE, Environment, DeviceLocation, BuoyDevice, BuoyGear
 
 
 class TestEnvironment:
@@ -332,11 +332,10 @@ class TestBuoyGear:
         assert len(observations) == 1
         observation = observations[0]
         
-        assert observation["subject_name"] == "GEAR_SINGLE"
-        assert observation["manufacturer_id"] == "device_001"
-        assert observation["subject_is_active"] is False
-        assert observation["source_type"] == "ropeless_buoy"
-        assert observation["subject_subtype"] == "ropeless_buoy_gearset"
+        assert observation["source_name"] == "GEAR_SINGLE"
+        assert observation["source"] == "device_001"
+        assert observation["type"] == SOURCE_TYPE
+        assert observation["subject_type"] == SUBJECT_SUBTYPE
         assert observation["location"]["lat"] == 42.123456
         assert observation["location"]["lon"] == -71.987654
         assert observation["recorded_at"] == recorded_at
@@ -361,22 +360,20 @@ class TestBuoyGear:
         
         # Check first observation
         obs1 = observations[0]
-        assert obs1["subject_name"] == "GEAR_MULTI"
-        assert obs1["manufacturer_id"] == "device_001"
-        assert obs1["subject_is_active"] is False
-        assert obs1["source_type"] == "ropeless_buoy"
-        assert obs1["subject_subtype"] == "ropeless_buoy_gearset"
+        assert obs1["source_name"] == "GEAR_MULTI"
+        assert obs1["source"] == "device_001"
+        assert obs1["type"] == SOURCE_TYPE
+        assert obs1["subject_type"] == SUBJECT_SUBTYPE
         assert obs1["location"]["lat"] == 42.123456
         assert obs1["location"]["lon"] == -71.987654
         assert obs1["recorded_at"] == recorded_at
         
         # Check second observation
         obs2 = observations[1]
-        assert obs2["subject_name"] == "GEAR_MULTI"
-        assert obs2["manufacturer_id"] == "device_002"
-        assert obs2["subject_is_active"] is False
-        assert obs2["source_type"] == "ropeless_buoy"
-        assert obs2["subject_subtype"] == "ropeless_buoy_gearset"
+        assert obs2["source_name"] == "GEAR_MULTI"
+        assert obs2["source"] == "device_002"
+        assert obs2["type"] == SOURCE_TYPE
+        assert obs2["subject_type"] == SUBJECT_SUBTYPE
         assert obs2["location"]["lat"] == 43.0
         assert obs2["location"]["lon"] == -72.0
         assert obs2["recorded_at"] == recorded_at
@@ -418,5 +415,5 @@ class TestBuoyGear:
         
         # Verify that the constants are imported and used correctly
         for observation in observations:
-            assert observation["source_type"] == "ropeless_buoy"
-            assert observation["subject_subtype"] == "ropeless_buoy_gearset"
+            assert observation["type"] == SOURCE_TYPE
+            assert observation["subject_type"] == SUBJECT_SUBTYPE

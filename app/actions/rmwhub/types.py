@@ -71,7 +71,7 @@ class GearSet(BaseModel):
     id: str
     deployment_type: str
     traps_in_set: Optional[int]
-    trawl_path: str
+    trawl_path: Optional[str]
     share_with: Optional[List[str]]
     traps: List[Trap]
     when_updated_utc: str
@@ -124,7 +124,7 @@ class GearSet(BaseModel):
                     "lon": trap.longitude
                 },
                 "recorded_at": recorded_at,
-                "source_type": SOURCE_TYPE,
+                "type": SOURCE_TYPE,
                 "subject_type": SUBJECT_SUBTYPE,
                 "additional": {
                     "event_type": event_type,

@@ -570,10 +570,10 @@ class TestGearSet:
         assert obs["location"]["lat"] == 42.123456
         assert obs["location"]["lon"] == -71.987654
         assert obs["recorded_at"] == datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
-        assert obs["source_type"] == "ropeless_gear"
-        assert obs["subject_subtype"] == "ropeless_buoy_gearset"
-        assert obs["subject_name"] == "gearset_deployed"
-        assert obs["manufacturer_id"] == "trap_deployed"
+        assert obs["type"] == SOURCE_TYPE
+        assert obs["subject_type"] == SUBJECT_SUBTYPE
+        assert obs["source_name"] == "gearset_deployed"
+        assert obs["source"] == "trap_deployed"
         assert obs["additional"]["event_type"] == "gear_deployed"
     
     @pytest.mark.asyncio
@@ -608,10 +608,10 @@ class TestGearSet:
         assert obs["location"]["lat"] == 43.0
         assert obs["location"]["lon"] == -72.0
         assert obs["recorded_at"] == datetime(2023, 9, 15, 18, 0, 0, tzinfo=timezone.utc)
-        assert obs["source_type"] == "ropeless_gear"
-        assert obs["subject_subtype"] == "ropeless_buoy_gearset"
-        assert obs["subject_name"] == "gearset_retrieved"
-        assert obs["manufacturer_id"] == "trap_retrieved"
+        assert obs["type"] == SOURCE_TYPE
+        assert obs["subject_type"] == SUBJECT_SUBTYPE
+        assert obs["source_name"] == "gearset_retrieved"
+        assert obs["source"] == "trap_retrieved"
         assert obs["additional"]["event_type"] == "gear_retrieved"
     
     @pytest.mark.asyncio
@@ -636,16 +636,16 @@ class TestGearSet:
         obs1 = observations[0]
         assert obs1["location"]["lat"] == 42.123456
         assert obs1["location"]["lon"] == -71.987654
-        assert obs1["subject_name"] == "gearset_multi"
-        assert obs1["manufacturer_id"] == "trap_001"
+        assert obs1["source_name"] == "gearset_multi"
+        assert obs1["source"] == "trap_001"
         assert obs1["additional"]["event_type"] == "gear_deployed"
         
         # Check second observation (retrieved)
         obs2 = observations[1]
         assert obs2["location"]["lat"] == 43.0
         assert obs2["location"]["lon"] == -72.0
-        assert obs2["subject_name"] == "gearset_multi"
-        assert obs2["manufacturer_id"] == "trap_002"
+        assert obs2["source_name"] == "gearset_multi"
+        assert obs2["source"] == "trap_002"
         assert obs2["additional"]["event_type"] == "gear_retrieved"
     
     @pytest.mark.asyncio
