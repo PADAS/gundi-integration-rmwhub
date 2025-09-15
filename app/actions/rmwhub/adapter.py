@@ -264,6 +264,8 @@ class RmwHubAdapter:
         """
         Create an RMW update from an EarthRanger gear.
         """
+        if er_gear.manufacturer == "rmwhub":
+            return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
         for i, device in enumerate(er_gear.devices):
             traps.append(
