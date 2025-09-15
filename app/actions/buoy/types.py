@@ -7,12 +7,13 @@ from pydantic import BaseModel
 
 SOURCE_TYPE = "ropeless_buoy"
 SUBJECT_SUBTYPE = "ropeless_buoy_gearset"
-GEAR_DEPLOYED_EVENT = "gear_deployed"
-GEAR_RETRIEVED_EVENT = "gear_retrieved"
+GEAR_DEPLOYED_EVENT = "trap_deployed"
+GEAR_RETRIEVED_EVENT = "trap_retrieved"
 class Environment(Enum):
     DEV = "Buoy Dev"
     STAGE = "Buoy Staging"
     PRODUCTION = "Buoy Prod"
+    RF_1086 = "Buoy RF 1086 Dev"
 
 class DeviceLocation(BaseModel):
     latitude: float
@@ -21,6 +22,7 @@ class DeviceLocation(BaseModel):
 
 class BuoyDevice(BaseModel):
     device_id: str
+    source_id: str
     label: str
     location: DeviceLocation
     last_updated: datetime

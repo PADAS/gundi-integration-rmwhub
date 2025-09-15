@@ -159,9 +159,9 @@ class RmwHubAdapter:
         logger.info("Starting upload task")
         upload_task_id = await log_action_activity(
             integration_id=self.integration_uuid,
-            action_log_type="upload",
+            action_id="pull_observations",
             level=LogLevel.INFO,
-            log="Starting upload task",
+            title="Starting upload task",
         )
 
         try:
@@ -174,7 +174,7 @@ class RmwHubAdapter:
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime):
                 gear_count += 1
                 try:
-                    rmw_update = await self._create_rmw_update_from_er_gear(er_gear, {})
+                    rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)
                         logger.info(f"Processed gear {er_gear.name}")
@@ -188,10 +188,9 @@ class RmwHubAdapter:
                 logger.info("No gear found in EarthRanger, skipping upload.")
                 await log_action_activity(
                     integration_id=self.integration_uuid,
-                    action_log_type="upload",
+                    action_id="pull_observations",
                     level=LogLevel.INFO,
-                    log="No gear found in EarthRanger, skipping upload.",
-                    parent_log_id=upload_task_id,
+                    title="No gear found in EarthRanger, skipping upload.",
                 )
                 return 0, {}
 
@@ -210,19 +209,19 @@ class RmwHubAdapter:
                             logger.warning(f"Failed to upload {len(failed_sets)} sets: {failed_sets}")
                             await log_action_activity(
                                 integration_id=self.integration_uuid,
-                                action_log_type="upload",
+                                action_id="pull_observations",
                                 level=LogLevel.WARNING,
-                                log=f"Failed to upload {len(failed_sets)} sets: {failed_sets}",
-                                parent_log_id=upload_task_id,
+                                title=f"Failed to upload {len(failed_sets)} sets: {failed_sets}",
+                                data={"failed_sets": failed_sets},
                             )
                         
                         logger.info(f"Successfully uploaded {trap_count} traps to RMW Hub")
                         await log_action_activity(
                             integration_id=self.integration_uuid,
-                            action_log_type="upload",
+                            action_id="pull_observations",
                             level=LogLevel.INFO,
-                            log=f"Successfully uploaded {trap_count} traps to RMW Hub",
-                            parent_log_id=upload_task_id,
+                            title=f"Successfully uploaded {trap_count} traps to RMW Hub",
+                            data={"trap_count": trap_count},
                         )
 
                         return trap_count, response_data
@@ -230,20 +229,20 @@ class RmwHubAdapter:
                         logger.error(f"Upload failed with status {response.status_code}")
                         await log_action_activity(
                             integration_id=self.integration_uuid,
-                            action_log_type="upload",
+                            action_id="pull_observations",
                             level=LogLevel.ERROR,
-                            log=f"Upload failed with status {response.status_code}",
-                            parent_log_id=upload_task_id,
+                            title=f"Upload failed with status {response.status_code}",
+                            data={"upload_task_id": upload_task_id},
                         )
                         return 0, {}
                 except Exception as e:
                     logger.error(f"Upload error: {e}")
                     await log_action_activity(
                         integration_id=self.integration_uuid,
-                        action_log_type="upload",
+                        action_id="pull_observations",
                         level=LogLevel.ERROR,
-                        log=f"Upload error: {e}",
-                        parent_log_id=upload_task_id,
+                        title=f"Upload error: {e}",
+                        data={"upload_task_id": upload_task_id},
                     )
                     return 0, {}
 
@@ -251,10 +250,10 @@ class RmwHubAdapter:
             logger.error(f"Error in upload task: {e}")
             await log_action_activity(
                 integration_id=self.integration_uuid,
-                action_log_type="upload",
+                action_id="pull_observations",
                 level=LogLevel.ERROR,
-                log=f"Error in upload task: {e}",
-                parent_log_id=upload_task_id,
+                title=f"Error in upload task: {e}",
+                data={"upload_task_id": upload_task_id},
             )
             return 0, []
 
@@ -269,7 +268,7 @@ class RmwHubAdapter:
         for i, device in enumerate(er_gear.devices):
             traps.append(
                 Trap(
-                    id=device.device_id,
+                    id=device.source_id,
                     sequence=i + 1,
                     latitude=device.location.latitude,
                     longitude=device.location.longitude,

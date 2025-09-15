@@ -144,7 +144,7 @@ async def action_pull_observations(
 
         download_observations = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
 
-        num_sets_updated = await handle_upload(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
+        num_sets_updated = await handle_upload(rmw_adapter, start_datetime, integration, action_config)
 
         for batch in generate_batches(download_observations):
             logger.info(f"Sending {len(batch)} observations to Gundi...")
