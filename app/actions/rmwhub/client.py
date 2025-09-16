@@ -37,7 +37,7 @@ class RmwHubClient:
         if status:
             data["status"] = status
 
-        url = self.rmw_url + "/search_hub/"
+        url = "https://test.ropeless.network/api" + "/search_hub/"
 
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
