@@ -20,7 +20,7 @@ class RmwHubClient:
         self.api_key = api_key
         self.rmw_url = rmw_url
 
-    async def search_hub(self, start_datetime: str, status: bool = None) -> dict:
+    async def search_hub(self, start_datetime: str, status: str = None) -> dict:
         """
         Downloads data from the RMWHub API using the search_hub endpoint.
         ref: https://ropeless.network/api/docs#/Download
@@ -30,14 +30,13 @@ class RmwHubClient:
             "format_version": 0.1,
             "api_key": self.api_key,
             "max_sets": 10000,
-            # "status": "deployed", // Pull all data not just deployed gear
-            "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat(),
+            "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat(),  # Pull all data from the start date
         }
 
         if status:
             data["status"] = status
 
-        url = "https://test.ropeless.network/api" + "/search_hub/"
+        url = "https://ropeless.network/api" + "/search_hub/"
 
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
