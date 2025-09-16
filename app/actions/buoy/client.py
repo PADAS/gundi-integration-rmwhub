@@ -162,6 +162,7 @@ class BuoyClient:
             
             device = BuoyDevice(
                 device_id=device_data.get("device_id", ""),
+                source_id=device_data.get("source_id", ""),
                 label=device_data.get("label", ""),
                 location=location,
                 last_updated=datetime.fromisoformat(device_data.get("last_updated", datetime.now().isoformat())),
