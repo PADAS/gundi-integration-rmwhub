@@ -49,15 +49,15 @@ class RmwHubAdapter:
         return uuid.UUID(self.integration_id)
 
     async def download_data(
-        self, start_datetime: str, status: bool = None
+        self, start_datetime: str
     ) -> List[GearSet]:
         """
         Downloads data from the RMW Hub API using the search_hub endpoint.
         ref: https://ropeless.network/api/docs#/Download
         """
 
-        response = await self.rmw_client.search_hub(start_datetime, status)
-        
+        response = await self.rmw_client.search_hub(start_datetime)
+
         try:
             response_json = json.loads(response)
         except json.JSONDecodeError:
