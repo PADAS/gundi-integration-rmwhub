@@ -143,6 +143,7 @@ class RmwHubAdapter:
         if start_datetime:
             params['updated_after'] = start_datetime.isoformat()
         params['source_type'] = SOURCE_TYPE
+        params['page_size'] = 1000
         
         async for gear in self.gear_client.iter_gears(params=params):
             yield gear

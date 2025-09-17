@@ -7,7 +7,7 @@ from app.services.utils import find_config_for_action
 from app.actions.buoy.types import Environment
 from gundi_core.schemas.v2 import Integration
 
-LOAD_BATCH_SIZE = 100
+LOAD_BATCH_SIZE = 500
 
 def generate_batches(iterable, n=LOAD_BATCH_SIZE):
     for i in range(0, len(iterable), n):
