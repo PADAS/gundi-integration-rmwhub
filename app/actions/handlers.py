@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List
@@ -41,7 +42,7 @@ async def handle_download(
     logger.info(
         f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
-    rmw_sets = await rmw_adapter.download_data(start_datetime)
+    rmw_sets = await rmw_adapter.download_active_data(start_datetime)
     logger.info(
         f"{len(rmw_sets)} Gearsets Downloaded from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
@@ -78,7 +79,14 @@ async def handle_download(
     logger.info(
         f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmw_sets)}"
     )
-    return await rmw_adapter.process_download(rmw_sets)
+    observations = await rmw_adapter.process_download(rmw_sets)
+    logger.info(f"Sending the following observations to Gundi:\n{json.dumps(observations, indent=2, default=str)}")
+    for batch in generate_batches(observations):
+        logger.info(f"Sending {len(batch)} observations to Gundi...")
+        await send_observations_to_gundi(
+            observations=batch, integration_id=str(integration.id)
+        )
+    return len(observations)
     
 
 async def handle_upload(
@@ -145,18 +153,12 @@ async def action_pull_observations(
             er_destination + "api/v1.0"
         )
 
-        download_observations = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
+        num_observations = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
 
         num_sets_updated = await handle_upload(rmw_adapter, start_datetime, integration, action_config)
 
-        for batch in generate_batches(download_observations):
-            logger.info(f"Sending {len(batch)} observations to Gundi...")
-            await send_observations_to_gundi(
-                observations=batch, integration_id=str(integration.id)
-            )
-
     return {
-        "observations_downloaded": len(download_observations),
+        "observations_downloaded": num_observations,
         "sets_updated": num_sets_updated,
     }
 
@@ -188,17 +190,11 @@ async def action_pull_observations_24_hour_sync(
             er_destination + "api/v1.0"
         )
 
-        download_observations = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
+        num_observations = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
 
         num_sets_updated = await handle_upload(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
 
-        for batch in generate_batches(download_observations):
-            logger.info(f"Sending {len(batch)} observations to Gundi...")
-            await send_observations_to_gundi(
-                observations=batch, integration_id=str(integration.id)
-            )
-
     return {
-        "observations_downloaded": len(download_observations),
+        "observations_downloaded": num_observations,
         "sets_updated": num_sets_updated,
     }
