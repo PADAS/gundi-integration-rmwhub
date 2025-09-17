@@ -129,7 +129,9 @@ class GearSet(BaseModel):
                 "additional": {
                     "event_type": event_type,
                     "raw": self.dict(),
-                    "additional_info": {}
+                    "additional_info": {
+                        "example": "info"
+                    }
                 }
             }
 
