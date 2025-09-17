@@ -122,7 +122,7 @@ async def action_pull_observations(
     current_datetime = datetime.now(timezone.utc)
     #! Forcing to sync the whole period
     # TODO: Removing this after figuring out the hauling problem
-    action_config.minutes_to_sync = 365 * 24 * 60  # 1 year in minutes
+    action_config.minutes_to_sync = 90 * 24 * 60  # 90 days in minutes
     sync_interval_minutes = action_config.minutes_to_sync
     start_datetime = current_datetime - timedelta(minutes=sync_interval_minutes)
     end_datetime = current_datetime
