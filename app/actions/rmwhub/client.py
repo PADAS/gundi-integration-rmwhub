@@ -63,6 +63,7 @@ class RmwHubClient:
         upload_data = {"format_version": 0, "api_key": self.api_key, "sets": sets}
         
         logger.info("Uploading %d gear sets to RMW Hub API in %s", len(sets), url)
+        logger.info("Upload payload: %s", json.dumps(upload_data, indent=2, default=str))
         return None
         async with httpx.AsyncClient() as client:
             response = await client.post(
