@@ -130,7 +130,8 @@ class GearSet(BaseModel):
                 "subject_type": SUBJECT_SUBTYPE,
                 "additional": {
                     "event_type": event_type,
-                    "raw": self.dict()
+                    "raw": self.dict(),
+                    "example_field": "example_value"  # Placeholder for any additional fields
                 }
             }
 
