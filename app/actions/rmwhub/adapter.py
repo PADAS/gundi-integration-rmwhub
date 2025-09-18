@@ -48,7 +48,7 @@ class RmwHubAdapter:
             return self.integration_id
         return uuid.UUID(self.integration_id)
 
-    async def download_active_data(
+    async def download_data(
         self, start_datetime: str
     ) -> List[GearSet]:
         """
@@ -69,12 +69,9 @@ class RmwHubAdapter:
             return []
 
         rmwsets = self.convert_to_sets(response_json)
-        active_rmwsets = [s for s in rmwsets if any(t.status == "deployed" for t in s.traps)]
-        for s in active_rmwsets:
-            s.traps = [t for t in s.traps if t.status == "deployed"]
-        return active_rmwsets
-    def convert_to_sets(self, response_json: dict) -> List[GearSet]:
+        return rmwsets
 
+    def convert_to_sets(self, response_json: dict) -> List[GearSet]:
         if "sets" not in response_json:
             logger.error("Failed to download data from RMW Hub API.")
             return []

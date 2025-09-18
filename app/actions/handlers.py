@@ -42,7 +42,7 @@ async def handle_download(
     logger.info(
         f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
-    rmw_sets = await rmw_adapter.download_active_data(start_datetime)
+    rmw_sets = await rmw_adapter.download_data(start_datetime)
     logger.info(
         f"{len(rmw_sets)} Gearsets Downloaded from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
