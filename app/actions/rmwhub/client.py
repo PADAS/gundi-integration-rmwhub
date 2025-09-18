@@ -61,7 +61,9 @@ class RmwHubClient:
                 trap["release_type"] = trap.get("release_type") or ""
 
         upload_data = {"format_version": 0, "api_key": self.api_key, "sets": sets}
-
+        
+        logger.info("Uploading %d gear sets to RMW Hub API in %s", len(sets), url)
+        return None
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 url, headers=RmwHubClient.HEADERS, json=upload_data
