@@ -202,7 +202,7 @@ class RmwHubAdapter:
                 try:
                     # Upload updates to RMW Hub
                     response = await self.rmw_client.upload_data(rmw_updates)
-                    return 0, {}
+
                     if response.status_code == 200:
                         response_data = response.json()
                         result = response_data.get("result", {})
