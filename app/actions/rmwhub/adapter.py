@@ -202,6 +202,8 @@ class RmwHubAdapter:
 
             # Stream gears and process them one by one
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="hauled"):
+                if er_gear.manufacturer == "rmwhub":
+                    continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
