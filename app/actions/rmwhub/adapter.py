@@ -49,7 +49,7 @@ class RmwHubAdapter:
         return uuid.UUID(self.integration_id)
 
     async def download_data(
-        self, start_datetime: str
+        self, start_datetime: str, status: str = "all"
     ) -> List[GearSet]:
         """
         Downloads data from the RMW Hub API using the search_hub endpoint.
@@ -69,6 +69,15 @@ class RmwHubAdapter:
             return []
 
         rmwsets = self.convert_to_sets(response_json)
+
+        if status == "deployed":
+            rmwsets = [s for s in rmwsets if any(t.status == "deployed" for t in s.traps)]
+            for s in rmwsets:
+                s.traps = [t for t in s.traps if t.status == "deployed"]
+
+        if status == "hauled":
+            rmwsets = [s for s in rmwsets if all(t.status == "hauled" for t in s.traps)]
+        
         return rmwsets
 
     def convert_to_sets(self, response_json: dict) -> List[GearSet]:
@@ -115,13 +124,31 @@ class RmwHubAdapter:
         """
         Process the sets from the RMW Hub API.
         """
-        # Normalize the extracted data into a list of observations following the new Data Model
+        gears = self.gear_client.get_all_gears()
+
+        trap_id_to_gear_mapping = {
+            device.source_id: gear
+            for gear in gears
+            for device in gear.devices
+            if device.source_id
+        }
+
         observations = []
 
         for gearset in rmw_sets:
-            new_observations = await gearset.build_observations()
-            observations.extend(new_observations)
+            for trap in gearset.traps:
+                er_gear = trap_id_to_gear_mapping.get(trap.id)
+                if not er_gear:
+                    logger.warning(f"Trap ID {trap.id} not found in EarthRanger, skipping.")
+                    continue
 
+                if (trap.status == "deployed" and er_gear.status == "deployed") or \
+                   (trap.status == "retrieved" and er_gear.status == "retrieved"):
+                    logger.info(f"Trap ID {trap.id} status '{trap.status}' matches EarthRanger gear status '{er_gear.status}', skipping.")
+                    continue
+
+                trap_observation = await gearset.build_observation_for_specific_trap(trap.id)
+                observations.extend(trap_observation)
         return observations
 
 

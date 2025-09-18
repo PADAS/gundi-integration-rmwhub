@@ -143,6 +143,26 @@ class BuoyClient:
                 # Clear params for subsequent requests (they're already in the next URL)
                 params = None
 
+    async def get_all_gears(
+        self,
+        params: Optional[Dict[str, Any]] = None,
+        timeout: Optional[httpx.Timeout] = None,
+    ) -> List[BuoyGear]:
+        """
+        Retrieve all gears from EarthRanger API with pagination handling.
+        
+        Args:
+            params: Optional query parameters
+            timeout: Optional timeout settings (overrides defaults)
+            
+        Returns:
+            List of BuoyGear objects
+        """
+        gears = []
+        async for gear in self.iter_gears(params=params, timeout=timeout):
+            gears.append(gear)
+        return gears
+
     def _parse_gear(self, data: Dict[str, Any]) -> BuoyGear:
         """
         Parse gear data from API response into BuoyGear object.

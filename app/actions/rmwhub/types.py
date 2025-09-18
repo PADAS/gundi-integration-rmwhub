@@ -98,7 +98,7 @@ class GearSet(BaseModel):
         return hash((self.id, self.deployment_type, tuple(self.traps)))
 
 
-    async def build_observations(self) -> List:
+    async def build_observation_for_specific_trap(self, trap_id: str) -> List:
         """
         Build observations payload for the gear set as a single gear entity.
         """
@@ -107,6 +107,8 @@ class GearSet(BaseModel):
 
         observations = []
         for trap in self.traps:
+            if trap.id != trap_id:
+                continue
             recorded_at = trap.get_latest_update_time()
 
             if trap.status == "deployed":
