@@ -187,6 +187,17 @@ class RmwHubAdapter:
                 except Exception as e:
                     logger.error(f"Error processing gear {er_gear.name}: {e}")
                     errors.append((f"Error processing gear {er_gear.name}", e))
+            
+            async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="deployed"):
+                gear_count += 1
+                try:
+                    rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
+                    if rmw_update:
+                        rmw_updates.append(rmw_update)
+                        logger.info(f"Processed gear {er_gear.name}")
+                except Exception as e:
+                    logger.error(f"Error processing gear {er_gear.name}: {e}")
+                    errors.append((f"Error processing gear {er_gear.name}", e))
 
             logger.info(f"Found {gear_count} gears in EarthRanger")
 
