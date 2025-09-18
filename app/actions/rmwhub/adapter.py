@@ -138,14 +138,15 @@ class RmwHubAdapter:
         for gearset in rmw_sets:
             for trap in gearset.traps:
                 er_gear = trap_id_to_gear_mapping.get(trap.id)
-                if not er_gear:
-                    logger.warning(f"Trap ID {trap.id} not found in EarthRanger, skipping.")
+                if not er_gear and trap.status == "retrieved":
+                    logger.info(f"Trap ID {trap.id} not found in EarthRanger gears, skipping retrieved trap.")
                     continue
-
-                if (trap.status == "deployed" and er_gear.status == "deployed") or \
-                   (trap.status == "retrieved" and er_gear.status == "retrieved"):
-                    logger.info(f"Trap ID {trap.id} status '{trap.status}' matches EarthRanger gear status '{er_gear.status}', skipping.")
-                    continue
+                
+                if er_gear:
+                    if (trap.status == "deployed" and er_gear.status == "deployed") or \
+                       (trap.status == "retrieved" and er_gear.status == "retrieved"):
+                        logger.info(f"Trap ID {trap.id} status '{trap.status}' matches EarthRanger gear status '{er_gear.status}', skipping.")
+                        continue
 
                 trap_observation = await gearset.build_observation_for_specific_trap(trap.id)
                 observations.extend(trap_observation)
