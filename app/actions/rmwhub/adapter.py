@@ -124,7 +124,7 @@ class RmwHubAdapter:
         """
         Process the sets from the RMW Hub API.
         """
-        gears = self.gear_client.get_all_gears()
+        gears = await self.gear_client.get_all_gears()
 
         trap_id_to_gear_mapping = {
             device.source_id: gear
