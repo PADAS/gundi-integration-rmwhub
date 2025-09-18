@@ -128,7 +128,7 @@ class RmwHubAdapter:
         return observations
 
 
-    async def iter_er_gears(self, start_datetime: datetime = None) -> AsyncIterator[BuoyGear]:
+    async def iter_er_gears(self, start_datetime: datetime = None, state: str = None) -> AsyncIterator[BuoyGear]:
         """
         Iterate over gears from EarthRanger for the RMW Hub integration.
         
@@ -147,6 +147,8 @@ class RmwHubAdapter:
             params['updated_after'] = start_datetime.isoformat()
         params['source_type'] = SOURCE_TYPE
         params['page_size'] = 1000
+        if state:
+            params['state'] = state
         
         async for gear in self.gear_client.iter_gears(params=params):
             yield gear
@@ -175,7 +177,7 @@ class RmwHubAdapter:
             gear_count = 0
 
             # Stream gears and process them one by one
-            async for er_gear in self.iter_er_gears(start_datetime=start_datetime):
+            async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="hauled"):
                 gear_count += 1
                 try:
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
