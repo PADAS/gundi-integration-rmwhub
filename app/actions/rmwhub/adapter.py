@@ -127,7 +127,7 @@ class RmwHubAdapter:
         gears = await self.gear_client.get_all_gears()
 
         trap_id_to_gear_mapping = {
-            device.source_id: gear
+            device.device_id: gear
             for gear in gears
             for device in gear.devices
             if device.source_id
