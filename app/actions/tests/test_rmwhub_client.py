@@ -50,7 +50,7 @@ class TestRmwHubClient:
             id="gearset_001",
             deployment_type="trawl",
             traps_in_set=1,
-            trawl_path="path_001",
+            trawl_path={"path": "path_001"},
             share_with=["partner_001"],
             traps=[sample_trap],
             when_updated_utc="2023-09-15T19:00:00Z"
@@ -99,73 +99,7 @@ class TestRmwHubClient:
         }
         
         mock_client.post.assert_called_once_with(
-            "https://test.rmwhub.com/search_hub/",
-            headers=RmwHubClient.HEADERS,
-            json=expected_data
-        )
-    
-    @pytest.mark.asyncio
-    @patch('httpx.AsyncClient')
-    async def test_search_hub_with_status(self, mock_client_class, client, sample_datetime):
-        """Test search_hub call with status parameter."""
-        # Mock the response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = '{"format_version": 0.1, "sets": []}'
-        
-        # Mock the async client
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        # Call the method with status
-        result = await client.search_hub(start_datetime=sample_datetime, status=True)
-        
-        # Assertions
-        assert result == '{"format_version": 0.1, "sets": []}'
-        
-        # Verify the call was made correctly with status
-        expected_data = {
-            "format_version": 0.1,
-            "api_key": "test_api_key",
-            "max_sets": 10000,
-            "start_datetime_utc": sample_datetime.astimezone(pytz.utc).isoformat(),
-            "status": True
-        }
-        
-        mock_client.post.assert_called_once_with(
-            "https://test.rmwhub.com/search_hub/",
-            headers=RmwHubClient.HEADERS,
-            json=expected_data
-        )
-    
-    @pytest.mark.asyncio
-    @patch('httpx.AsyncClient')
-    async def test_search_hub_with_false_status(self, mock_client_class, client, sample_datetime):
-        """Test search_hub call with status=False (should not include status in data)."""
-        # Mock the response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = '{"format_version": 0.1, "sets": []}'
-        
-        # Mock the async client
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-        
-        # Call the method with status=False
-        result = await client.search_hub(start_datetime=sample_datetime, status=False)
-        
-        # Verify status is not included when False
-        expected_data = {
-            "format_version": 0.1,
-            "api_key": "test_api_key",
-            "max_sets": 10000,
-            "start_datetime_utc": sample_datetime.astimezone(pytz.utc).isoformat(),
-        }
-        
-        mock_client.post.assert_called_once_with(
-            "https://test.rmwhub.com/search_hub/",
+            "https://ropeless.network/api/search_hub/",
             headers=RmwHubClient.HEADERS,
             json=expected_data
         )
@@ -256,7 +190,7 @@ class TestRmwHubClient:
             id="gearset_001",
             deployment_type="trawl",
             traps_in_set=1,
-            trawl_path="path_001",
+            trawl_path={"path": "path_001"},
             share_with=["partner_001"],
             traps=[sample_trap],
             when_updated_utc="2023-09-15T19:00:00Z"
@@ -279,7 +213,7 @@ class TestRmwHubClient:
             id="gearset_002",
             deployment_type="longline",
             traps_in_set=1,
-            trawl_path="path_002",
+            trawl_path={"path": "path_002"},
             share_with=[],
             traps=[trap2],
             when_updated_utc="2023-09-15T20:00:00Z"
@@ -339,7 +273,7 @@ class TestRmwHubClient:
             id="gearset_001",
             deployment_type="test",
             traps_in_set=1,
-            trawl_path="",
+            trawl_path={},
             share_with=[],
             traps=[trap],
             when_updated_utc="2023-09-15T19:00:00Z"

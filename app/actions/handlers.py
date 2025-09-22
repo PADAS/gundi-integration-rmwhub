@@ -43,6 +43,7 @@ async def handle_download(
         f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
     rmw_sets = await rmw_adapter.download_data(start_datetime)
+    # rmw_sets = [s for s in rmw_sets if s.id == "D2CB3086-3141-4B61-8795-9E873D9E879B"]  # Only process active gearsets
     logger.info(
         f"{len(rmw_sets)} Gearsets Downloaded from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )

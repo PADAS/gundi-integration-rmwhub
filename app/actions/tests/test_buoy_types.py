@@ -94,6 +94,7 @@ class TestBuoyDevice:
     def test_buoy_device_creation_with_deployment(self, sample_location, sample_datetime):
         """Test successful BuoyDevice creation with deployment date."""
         device = BuoyDevice(
+            source_id="2a2d6d72-1401-4838-ac78-c342a46fccc8",
             device_id="device_001",
             label="Test Buoy Device",
             location=sample_location,
@@ -110,6 +111,7 @@ class TestBuoyDevice:
     def test_buoy_device_creation_without_deployment(self, sample_location, sample_datetime):
         """Test successful BuoyDevice creation without deployment date."""
         device = BuoyDevice(
+            source_id="535a9c13-c2db-4117-a6f3-af49818bebac",
             device_id="device_002",
             label="Undeployed Device",
             location=sample_location,
@@ -126,6 +128,7 @@ class TestBuoyDevice:
     def test_buoy_device_optional_deployment_default(self, sample_location, sample_datetime):
         """Test BuoyDevice with default None for last_deployed."""
         device = BuoyDevice(
+            source_id="b001ec29-51dc-4f0a-89d2-0f21e88097fa",
             device_id="device_003",
             label="Default Device",
             location=sample_location,
@@ -186,6 +189,7 @@ class TestBuoyGear:
         """Fixture for sample BuoyDevice list."""
         return [
             BuoyDevice(
+                source_id="d055acdc-f7e2-4806-82ef-39c743579be3",
                 device_id="device_001",
                 label="Device 1",
                 location=sample_location,
@@ -193,6 +197,7 @@ class TestBuoyGear:
                 last_deployed=sample_datetime
             ),
             BuoyDevice(
+                source_id="d155acdc-f7e2-4806-82ef-39c743579be4",
                 device_id="device_002",
                 label="Device 2",
                 location=DeviceLocation(latitude=43.0, longitude=-72.0),
@@ -308,6 +313,7 @@ class TestBuoyGear:
     def test_create_haul_observation_single_device(self, sample_gear_id, sample_datetime, sample_location):
         """Test create_haul_observation with single device."""
         device = BuoyDevice(
+            source_id="0f7f896e-2f1c-45f1-81f2-0a006578b018",
             device_id="device_001",
             label="Single Device",
             location=sample_location,

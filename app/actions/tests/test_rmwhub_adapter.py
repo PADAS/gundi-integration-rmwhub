@@ -76,7 +76,7 @@ class TestRmwHubAdapter:
             id="gearset_001",
             deployment_type="lobster",
             traps_in_set=5,
-            trawl_path="north_path",
+            trawl_path={},
             share_with=["partner_1", "partner_2"],
             when_updated_utc="2023-09-15T18:00:00Z",
             traps=[sample_trap]
@@ -86,6 +86,7 @@ class TestRmwHubAdapter:
     def sample_buoy_device(self):
         """Fixture for sample BuoyDevice."""
         return BuoyDevice(
+            source_id="c7130b92-4919-4570-9816-d4c2fa5a7b26",
             device_id="device_001",
             label="Buoy Device 1",
             location=DeviceLocation(latitude=42.123456, longitude=-71.987654),
@@ -169,7 +170,7 @@ class TestRmwHubAdapter:
                 "set_id": "gearset_001",
                 "deployment_type": "lobster",
                 "traps_in_set": 1,
-                "trawl_path": "north_path",
+                "trawl_path": {},  # Changed to dict
                 "share_with": [],
                 "when_updated_utc": "2023-09-15T18:00:00Z",
                 "traps": [{
@@ -204,10 +205,10 @@ class TestRmwHubAdapter:
         """Test data download with status filter."""
         mock_response = {"sets": []}
         adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
-        
-        await adapter.download_data("2023-09-15T10:00:00Z", status=True)
-        
-        adapter.rmw_client.search_hub.assert_called_once_with("2023-09-15T10:00:00Z", True)
+
+        await adapter.download_data("2023-09-15T10:00:00Z", status="deployed")
+
+        adapter.rmw_client.search_hub.assert_called_once_with("2023-09-15T10:00:00Z")
 
     @pytest.mark.asyncio
     async def test_download_data_no_sets(self, adapter):
@@ -241,7 +242,7 @@ class TestRmwHubAdapter:
                 "set_id": "gearset_001",
                 "deployment_type": "lobster",
                 "traps_in_set": 1,
-                "trawl_path": "north_path",
+                "trawl_path": {},  # Changed to dict
                 "share_with": ["partner_1"],
                 "when_updated_utc": "2023-09-15T18:00:00Z",
                 "traps": [{
@@ -274,7 +275,7 @@ class TestRmwHubAdapter:
                 "vessel_id": "vessel_001",
                 "set_id": "gearset_001",
                 "deployment_type": "lobster",
-                "trawl_path": "north_path",
+                "trawl_path": {},  # Changed to dict
                 "when_updated_utc": "2023-09-15T18:00:00Z",
                 "traps": [{
                     "trap_id": "trap_001",
@@ -312,7 +313,10 @@ class TestRmwHubAdapter:
         """Test processing downloaded sets."""
         mock_observations = [{"test": "observation1"}, {"test": "observation2"}]
         
-        with patch('app.actions.rmwhub.types.GearSet.build_observations', new_callable=AsyncMock) as mock_build:
+        # Mock gear_client.get_all_gears to return empty list
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[])
+        
+        with patch('app.actions.rmwhub.types.GearSet.build_observation_for_specific_trap', new_callable=AsyncMock) as mock_build:
             mock_build.return_value = mock_observations
             
             result = await adapter.process_download([sample_gearset])
@@ -332,19 +336,23 @@ class TestRmwHubAdapter:
             id="gearset_002",
             deployment_type="crab",
             traps_in_set=3,
-            trawl_path="south_path",
+            trawl_path={},  # Changed to dict
             share_with=[],
             when_updated_utc="2023-09-15T19:00:00Z",
             traps=[]
         )
         
-        with patch('app.actions.rmwhub.types.GearSet.build_observations', new_callable=AsyncMock) as mock_build:
+        # Mock gear_client.get_all_gears to return empty list
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[])
+        
+        with patch.object(GearSet, 'build_observation_for_specific_trap', new_callable=AsyncMock) as mock_build:
             mock_build.side_effect = [mock_observations1, mock_observations2]
             
             result = await adapter.process_download([gearset1, gearset2])
             
-            assert result == mock_observations1 + mock_observations2
-            assert mock_build.call_count == 2
+            # Only gearset1 has traps, so only one call should be made
+            assert result == mock_observations1
+            assert mock_build.call_count == 1
 
     @pytest.mark.asyncio
     async def test_iter_er_gears(self, adapter, sample_buoy_gear):
@@ -385,7 +393,8 @@ class TestRmwHubAdapter:
         
         expected_params = {
             'updated_after': start_datetime.isoformat(),
-            'source_type': 'ropeless_buoy'
+            'source_type': 'ropeless_buoy',
+            'page_size': 1000
         }
         assert captured_params == expected_params
 
@@ -404,8 +413,10 @@ class TestRmwHubAdapter:
             }
         }
         
-        async def mock_iter_gears(start_datetime=None):
-            yield sample_buoy_gear
+        async def mock_iter_gears(start_datetime=None, state=None):
+            if state == "hauled":
+                yield sample_buoy_gear
+            # Don't yield anything for "deployed" state to avoid duplication
         
         with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log, \
              patch.object(adapter, 'iter_er_gears', side_effect=mock_iter_gears), \
@@ -437,7 +448,7 @@ class TestRmwHubAdapter:
             }
         }
         
-        async def mock_iter_gears(start_datetime=None):
+        async def mock_iter_gears(start_datetime=None, state=None):
             yield sample_buoy_gear
         
         with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log, \
@@ -462,7 +473,7 @@ class TestRmwHubAdapter:
         """Test upload process when no gears are found."""
         start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
         
-        async def mock_iter_gears(start_datetime=None):
+        async def mock_iter_gears(start_datetime=None, state=None):
             return
             yield  # This will never execute, creating an empty async generator
         
@@ -478,7 +489,7 @@ class TestRmwHubAdapter:
             # Should have logged that no gear was found
             info_calls = [call for call in mock_log.call_args_list if 
                          call[1].get('level') == LogLevel.INFO and 
-                         'No gear found' in call[1].get('log', '')]
+                         'No gear found' in call[1].get('title', '')]
             assert len(info_calls) > 0
 
     @pytest.mark.asyncio
@@ -486,7 +497,7 @@ class TestRmwHubAdapter:
         """Test upload process when gear processing fails."""
         start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
         
-        async def mock_iter_gears(start_datetime=None):
+        async def mock_iter_gears(start_datetime=None, state=None):
             yield sample_buoy_gear
         
         with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log, \
@@ -511,7 +522,7 @@ class TestRmwHubAdapter:
         mock_response = MagicMock()
         mock_response.status_code = 500
         
-        async def mock_iter_gears(start_datetime=None):
+        async def mock_iter_gears(start_datetime=None, state=None):
             yield sample_buoy_gear
         
         with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log, \
@@ -580,6 +591,7 @@ class TestRmwHubAdapter:
         """Test creating RMW update with multiple devices."""
         # Add another device
         second_device = BuoyDevice(
+            source_id="d8241c93-5a20-4671-a927-e5d3fb6a8c37",
             device_id="device_002",
             label="Buoy Device 2",
             location=DeviceLocation(latitude=43.123456, longitude=-72.987654),
@@ -593,8 +605,8 @@ class TestRmwHubAdapter:
         assert len(result.traps) == 2
         assert result.traps[0].sequence == 1
         assert result.traps[1].sequence == 2
-        assert result.traps[0].id == "device_001"
-        assert result.traps[1].id == "device_002"
+        assert result.traps[0].id == "c7130b92-4919-4570-9816-d4c2fa5a7b26"
+        assert result.traps[1].id == "d8241c93-5a20-4671-a927-e5d3fb6a8c37"
 
     @pytest.mark.asyncio
     async def test_create_display_id_to_gear_mapping(self, adapter):
@@ -722,7 +734,7 @@ class TestRmwHubAdapter:
         """Test upload process when upload raises an exception."""
         start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
         
-        async def mock_iter_gears(start_datetime=None):
+        async def mock_iter_gears(start_datetime=None, state=None):
             yield sample_buoy_gear
         
         with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log, \
@@ -741,7 +753,7 @@ class TestRmwHubAdapter:
             # Should have logged error
             error_calls = [call for call in mock_log.call_args_list if 
                           call[1].get('level') == LogLevel.ERROR and 
-                          'Upload error' in call[1].get('log', '')]
+                          'Upload error' in call[1].get('title', '')]
             assert len(error_calls) > 0
 
     @pytest.mark.asyncio
@@ -749,7 +761,7 @@ class TestRmwHubAdapter:
         """Test upload process when no updates are created from gears."""
         start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
         
-        async def mock_iter_gears(start_datetime=None):
+        async def mock_iter_gears(start_datetime=None, state=None):
             yield sample_buoy_gear
         
         with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log, \
@@ -780,3 +792,251 @@ class TestRmwHubAdapter:
         
         # Test empty string
         assert adapter.clean_data("") == ""
+
+    @pytest.mark.asyncio
+    async def test_download_data_deployed_status(self, adapter):
+        """Test download data with deployed status filter."""
+        mock_response = {
+            "sets": [{
+                "vessel_id": "vessel_001",
+                "set_id": "gearset_001",
+                "deployment_type": "lobster",
+                "traps_in_set": 2,
+                "trawl_path": {},
+                "share_with": [],
+                "when_updated_utc": "2023-09-15T18:00:00Z",
+                "traps": [
+                    {
+                        "trap_id": "trap_001",
+                        "sequence": 1,
+                        "latitude": 42.123456,
+                        "longitude": -71.987654,
+                        "deploy_datetime_utc": "2023-09-15T14:30:00Z",
+                        "surface_datetime_utc": "2023-09-15T16:00:00Z",
+                        "retrieved_datetime_utc": "2023-09-15T17:30:00Z",
+                        "status": "deployed",
+                        "accuracy": "high",
+                        "release_type": "manual",
+                        "is_on_end": False
+                    },
+                    {
+                        "trap_id": "trap_002",
+                        "sequence": 2,
+                        "latitude": 42.123456,
+                        "longitude": -71.987654,
+                        "deploy_datetime_utc": "2023-09-15T14:30:00Z",
+                        "surface_datetime_utc": "2023-09-15T16:00:00Z",
+                        "retrieved_datetime_utc": "2023-09-15T17:30:00Z",
+                        "status": "hauled",
+                        "accuracy": "high",
+                        "release_type": "manual",
+                        "is_on_end": True
+                    }
+                ]
+            }]
+        }
+        
+        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        
+        result = await adapter.download_data("2023-09-15T10:00:00Z", status="deployed")
+        
+        assert len(result) == 1
+        assert len(result[0].traps) == 1  # Only deployed traps should remain
+        assert result[0].traps[0].status == "deployed"
+
+    @pytest.mark.asyncio
+    async def test_download_data_hauled_status(self, adapter):
+        """Test download data with hauled status filter."""
+        mock_response = {
+            "sets": [{
+                "vessel_id": "vessel_001",
+                "set_id": "gearset_001",
+                "deployment_type": "lobster",
+                "traps_in_set": 2,
+                "trawl_path": {},
+                "share_with": [],
+                "when_updated_utc": "2023-09-15T18:00:00Z",
+                "traps": [
+                    {
+                        "trap_id": "trap_001",
+                        "sequence": 1,
+                        "latitude": 42.123456,
+                        "longitude": -71.987654,
+                        "deploy_datetime_utc": "2023-09-15T14:30:00Z",
+                        "surface_datetime_utc": "2023-09-15T16:00:00Z",
+                        "retrieved_datetime_utc": "2023-09-15T17:30:00Z",
+                        "status": "hauled",
+                        "accuracy": "high",
+                        "release_type": "manual",
+                        "is_on_end": False
+                    },
+                    {
+                        "trap_id": "trap_002",
+                        "sequence": 2,
+                        "latitude": 42.123456,
+                        "longitude": -71.987654,
+                        "deploy_datetime_utc": "2023-09-15T14:30:00Z",
+                        "surface_datetime_utc": "2023-09-15T16:00:00Z",
+                        "retrieved_datetime_utc": "2023-09-15T17:30:00Z",
+                        "status": "hauled",
+                        "accuracy": "high",
+                        "release_type": "manual",
+                        "is_on_end": True
+                    }
+                ]
+            }]
+        }
+        
+        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        
+        result = await adapter.download_data("2023-09-15T10:00:00Z", status="hauled")
+        
+        assert len(result) == 1  # Should include the set with all hauled traps
+
+    @pytest.mark.asyncio
+    async def test_iter_er_gears_with_state(self, adapter, sample_buoy_gear):
+        """Test iterating over EarthRanger gears with state filter."""
+        
+        async def mock_iter_gears(params=None):
+            yield sample_buoy_gear
+        
+        adapter.gear_client.iter_gears = mock_iter_gears
+        
+        result_gears = []
+        async for gear in adapter.iter_er_gears(state="deployed"):
+            result_gears.append(gear)
+        
+        assert len(result_gears) == 1
+        assert result_gears[0] == sample_buoy_gear
+
+    @pytest.mark.asyncio
+    async def test_process_upload_with_rmwhub_manufacturer(self, adapter):
+        """Test upload process skipping gear with rmwhub manufacturer."""
+        start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        rmwhub_gear = BuoyGear(
+            id=uuid.uuid4(),
+            display_id="rmwhub_001",
+            name="RMW Hub Gear",
+            status="deployed",
+            last_updated=datetime.now(timezone.utc),
+            devices=[],
+            type="buoy",
+            manufacturer="rmwhub",
+            additional={}
+        )
+        
+        async def mock_iter_gears(start_datetime=None, state=None):
+            if state == "hauled":
+                yield rmwhub_gear
+        
+        with patch('app.actions.rmwhub.adapter.log_action_activity', new_callable=AsyncMock) as mock_log:
+            mock_log.return_value = "test_task_id"
+            adapter.iter_er_gears = mock_iter_gears
+            
+            trap_count, response_data = await adapter.process_upload(start_datetime)
+            
+            assert trap_count == 0
+            assert response_data == {}
+
+    @pytest.mark.asyncio 
+    async def test_process_download_with_matching_status(self, adapter):
+        """Test process download when trap status matches ER gear status."""
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="lobster",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[Trap(
+                id="device_001",  # This should match device_id 
+                sequence=1,
+                latitude=42.123456,
+                longitude=-71.987654,
+                deploy_datetime_utc="2023-09-15T14:30:00Z",
+                surface_datetime_utc="2023-09-15T16:00:00Z",
+                retrieved_datetime_utc="2023-09-15T17:30:00Z",
+                status="deployed",
+                accuracy="high",
+                release_type="manual",
+                is_on_end=True
+            )]
+        )
+        
+        er_gear = BuoyGear(
+            id=uuid.uuid4(),
+            display_id="gear_001",
+            name="Test Gear",
+            status="deployed",  # Same status as trap
+            last_updated=datetime.now(timezone.utc),
+            devices=[BuoyDevice(
+                source_id="some_source_id",  # Need source_id for mapping validation
+                device_id="device_001",  # This should match trap.id
+                label="Device 1",
+                location=DeviceLocation(latitude=42.123456, longitude=-71.987654),
+                last_updated=datetime.now(timezone.utc),
+                last_deployed=datetime.now(timezone.utc)
+            )],
+            type="buoy",
+            manufacturer="test_manufacturer",
+            additional={}
+        )
+        
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[er_gear])
+        
+        result = await adapter.process_download([gearset])
+        
+        assert result == []  # Should skip because statuses match
+
+    @pytest.mark.asyncio
+    async def test_process_download_retrieved_trap_no_er_gear(self, adapter):
+        """Test process download with retrieved trap but no ER gear found."""
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="lobster",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[Trap(
+                id="unknown_trap",
+                sequence=1,
+                latitude=42.123456,
+                longitude=-71.987654,
+                deploy_datetime_utc="2023-09-15T14:30:00Z",
+                surface_datetime_utc="2023-09-15T16:00:00Z",
+                retrieved_datetime_utc="2023-09-15T17:30:00Z",
+                status="retrieved",  # Retrieved but no ER gear
+                accuracy="high",
+                release_type="manual",
+                is_on_end=True
+            )]
+        )
+        
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[])
+        
+        result = await adapter.process_download([gearset])
+        
+        assert result == []  # Should skip retrieved trap with no ER gear
+
+    @pytest.mark.asyncio
+    async def test_create_rmw_update_from_rmwhub_gear(self, adapter):
+        """Test creating RMW update from gear with rmwhub manufacturer returns None."""
+        rmwhub_gear = BuoyGear(
+            id=uuid.uuid4(),
+            display_id="rmwhub_001",
+            name="RMW Hub Gear",
+            status="deployed",
+            last_updated=datetime.now(timezone.utc),
+            devices=[],
+            type="buoy",
+            manufacturer="rmwhub",
+            additional={}
+        )
+        
+        result = await adapter._create_rmw_update_from_er_gear(rmwhub_gear)
+        
+        assert result is None

@@ -496,3 +496,178 @@ class TestBuoyClient:
             
             # Verify the default timeout was used
             mock_client_class.assert_called_once_with(timeout=client.default_timeout)
+
+    @pytest.mark.asyncio
+    async def test_get_all_gears_success(self, client, sample_gear_data):
+        """Test successful retrieval of all gears (deployed and hauled)."""
+        deployed_gear_data = {**sample_gear_data, "status": "deployed", "id": "12345678-1234-1234-1234-123456789012"}
+        hauled_gear_data = {**sample_gear_data, "status": "hauled", "id": "87654321-4321-4321-4321-210987654321", "display_id": "GEAR002"}
+        
+        deployed_response = {
+            "data": {
+                "results": [deployed_gear_data],
+                "next": None
+            }
+        }
+        
+        hauled_response = {
+            "data": {
+                "results": [hauled_gear_data],
+                "next": None
+            }
+        }
+        
+        mock_deployed_response = Mock()
+        mock_deployed_response.status_code = 200
+        mock_deployed_response.json.return_value = deployed_response
+        
+        mock_hauled_response = Mock()
+        mock_hauled_response.status_code = 200
+        mock_hauled_response.json.return_value = hauled_response
+        
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.side_effect = [mock_deployed_response, mock_hauled_response]
+            mock_client_class.return_value = mock_client
+            
+            gears = await client.get_all_gears()
+            
+            assert len(gears) == 2
+            assert gears[0].status == "deployed"
+            assert gears[1].status == "hauled"
+            
+            # Verify two requests were made (one for deployed, one for hauled)
+            assert mock_client.get.call_count == 2
+            
+            # Verify the correct parameters were used
+            calls = mock_client.get.call_args_list
+            assert calls[0][1]['params'] == {"state": "deployed"}
+            assert calls[1][1]['params'] == {"state": "hauled"}
+
+    @pytest.mark.asyncio
+    async def test_get_all_gears_with_timeout(self, client, sample_gear_data):
+        """Test get_all_gears with custom timeout."""
+        custom_timeout = httpx.Timeout(timeout=60.0)
+        
+        api_response = {
+            "data": {
+                "results": [sample_gear_data],
+                "next": None
+            }
+        }
+        
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = api_response
+        
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_response
+            mock_client_class.return_value = mock_client
+            
+            gears = await client.get_all_gears(timeout=custom_timeout)
+            
+            assert len(gears) == 2  # Both deployed and hauled calls return same gear
+            
+            # Verify custom timeout was used in both calls
+            assert mock_client_class.call_count == 2
+            for call in mock_client_class.call_args_list:
+                assert call[1]['timeout'] == custom_timeout
+
+    @pytest.mark.asyncio
+    async def test_get_all_gears_empty_results(self, client):
+        """Test get_all_gears when no gears are returned."""
+        empty_response = {
+            "data": {
+                "results": [],
+                "next": None
+            }
+        }
+        
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = empty_response
+        
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_response
+            mock_client_class.return_value = mock_client
+            
+            gears = await client.get_all_gears()
+            
+            assert len(gears) == 0
+            assert isinstance(gears, list)
+
+    @pytest.mark.asyncio
+    async def test_get_all_gears_error_handling(self, client):
+        """Test get_all_gears when API calls fail."""
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_response
+            mock_client_class.return_value = mock_client
+            
+            gears = await client.get_all_gears()
+            
+            # Should return empty list when both calls fail
+            assert len(gears) == 0
+            assert isinstance(gears, list)
+
+    def test_parse_gear_device_with_missing_source_id(self, client):
+        """Test parsing device data without source_id field."""
+        data = {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "display_id": "GEAR001",
+            "devices": [{
+                "device_id": "DEV001",
+                "label": "Device 1",
+                "location": {"latitude": 45.0, "longitude": -120.0},
+                "last_updated": "2023-10-01T12:00:00"
+                # source_id is missing, should default to empty string
+            }]
+        }
+        
+        gear = client._parse_gear(data)
+        assert len(gear.devices) == 1
+        assert gear.devices[0].source_id == ""  # Should default to empty string
+
+    def test_parse_gear_with_missing_manufacturer(self, client):
+        """Test parsing gear data without manufacturer field."""
+        data = {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "display_id": "GEAR001",
+            "devices": []
+            # manufacturer field is missing
+        }
+        
+        gear = client._parse_gear(data)
+        assert gear.manufacturer == ""  # Should default to empty string
+
+    def test_parse_gear_device_with_none_last_deployed(self, client):
+        """Test parsing device with None last_deployed value."""
+        data = {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "display_id": "GEAR001",
+            "devices": [{
+                "device_id": "DEV001",
+                "label": "Device 1",
+                "location": {"latitude": 45.0, "longitude": -120.0},
+                "last_updated": "2023-10-01T12:00:00",
+                "last_deployed": None  # Explicitly None
+            }]
+        }
+        
+        gear = client._parse_gear(data)
+        assert len(gear.devices) == 1
+        assert gear.devices[0].last_deployed is None

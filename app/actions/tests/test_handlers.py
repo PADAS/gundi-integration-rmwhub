@@ -97,7 +97,13 @@ class TestHandleDownload:
         mock_rmw_adapter.download_data.return_value = mock_gear_sets
         mock_rmw_adapter.process_download.return_value = mock_observations
         
-        with patch("app.actions.handlers.log_action_activity") as mock_log:
+        with patch("app.actions.handlers.log_action_activity") as mock_log, \
+             patch("app.actions.handlers.send_observations_to_gundi") as mock_send_observations, \
+             patch("app.actions.handlers.generate_batches") as mock_generate_batches:
+            
+            # Mock generate_batches to return the observations in batches
+            mock_generate_batches.return_value = [mock_observations[:2], mock_observations[2:]]
+            
             result = await handle_download(
                 mock_rmw_adapter,
                 start_datetime,
@@ -111,6 +117,15 @@ class TestHandleDownload:
         mock_rmw_adapter.download_data.assert_called_once_with(start_datetime)
         mock_rmw_adapter.process_download.assert_called_once_with(mock_gear_sets)
         
+        # Verify send_observations_to_gundi was called for each batch
+        assert mock_send_observations.call_count == 2
+        mock_send_observations.assert_any_call(
+            observations=mock_observations[:2], integration_id=str(integration.id)
+        )
+        mock_send_observations.assert_any_call(
+            observations=mock_observations[2:], integration_id=str(integration.id)
+        )
+        
         # Verify logging was called
         assert mock_log.call_count == 1
         log_call = mock_log.call_args_list[0]
@@ -120,8 +135,8 @@ class TestHandleDownload:
         assert log_call[1]["title"] == "Extracting observations with filter.."
         assert log_call[1]["data"]["gear_sets_to_process"] == 3
         
-        # Verify result
-        assert result == mock_observations
+        # Verify result (should return the count of observations)
+        assert result == len(mock_observations)
     
     @pytest.mark.asyncio
     async def test_handle_download_success_no_data(
@@ -339,7 +354,13 @@ class TestHandlerEdgeCases:
             mock_adapter.download_data.return_value = [Mock()]
             mock_adapter.process_download.return_value = [Mock(), Mock()]
             
-            with patch("app.actions.handlers.log_action_activity") as mock_log:
+            with patch("app.actions.handlers.log_action_activity") as mock_log, \
+                 patch("app.actions.handlers.send_observations_to_gundi") as mock_send_observations, \
+                 patch("app.actions.handlers.generate_batches") as mock_generate_batches:
+                
+                # Mock generate_batches to return observations in batches
+                mock_generate_batches.return_value = [[Mock(), Mock()]]
+                
                 result = await handle_download(
                     mock_adapter, start_datetime, end_datetime, integration, env, action_config
                 )
@@ -349,7 +370,7 @@ class TestHandlerEdgeCases:
             assert str(env) in str(log_call[1]["data"]["environment"])
             
             # Verify result
-            assert len(result) == 2
+            assert result == 2
     
     @pytest.mark.asyncio
     async def test_handle_upload_with_empty_dict_response(self):
@@ -418,9 +439,7 @@ class TestActionPullObservationsCore:
              patch("app.actions.handlers.get_er_token_and_site") as mock_get_token, \
              patch("app.actions.handlers.RmwHubAdapter") as mock_adapter_class, \
              patch("app.actions.handlers.handle_download") as mock_handle_download, \
-             patch("app.actions.handlers.handle_upload") as mock_handle_upload, \
-             patch("app.actions.handlers.generate_batches") as mock_generate_batches, \
-             patch("app.actions.handlers.send_observations_to_gundi") as mock_send_observations:
+             patch("app.actions.handlers.handle_upload") as mock_handle_upload:
             
             # Setup mocks
             current_time = datetime(2023, 10, 1, 12, 30, 0, tzinfo=timezone.utc)
@@ -433,9 +452,8 @@ class TestActionPullObservationsCore:
             
             mock_get_token.return_value = ("test_token", "https://er-dev.com/")
             mock_adapter_class.return_value = AsyncMock(spec=RmwHubAdapter)
-            mock_handle_download.return_value = [Mock(), Mock()]
+            mock_handle_download.return_value = 2  # Return count of observations
             mock_handle_upload.return_value = 1
-            mock_generate_batches.return_value = [[Mock(), Mock()]]
             
             # Execute function
             result = await pull_observations_func(integration, action_config)
@@ -445,11 +463,10 @@ class TestActionPullObservationsCore:
             mock_get_token.assert_called_once_with(integration, Environment.DEV)
             mock_handle_download.assert_called_once()
             mock_handle_upload.assert_called_once()
-            mock_send_observations.assert_called_once()
-            
+
             assert result["observations_downloaded"] == 2
-            assert result["sets_updated"] == 1
-    
+            assert result["sets_updated"] == 1 
+
     @pytest.mark.asyncio
     async def test_pull_observations_24_hour_core_logic(self, integration, action_config):
         """Test the core logic of 24-hour pull observations without the decorator."""
@@ -473,9 +490,7 @@ class TestActionPullObservationsCore:
              patch("app.actions.handlers.get_er_token_and_site") as mock_get_token, \
              patch("app.actions.handlers.RmwHubAdapter") as mock_adapter_class, \
              patch("app.actions.handlers.handle_download") as mock_handle_download, \
-             patch("app.actions.handlers.handle_upload") as mock_handle_upload, \
-             patch("app.actions.handlers.generate_batches") as mock_generate_batches, \
-             patch("app.actions.handlers.send_observations_to_gundi") as mock_send_observations:
+             patch("app.actions.handlers.handle_upload") as mock_handle_upload:
             
             # Setup mocks  
             current_time = datetime(2023, 10, 2, 0, 10, 0, tzinfo=timezone.utc)  # 12:10 AM
@@ -488,9 +503,8 @@ class TestActionPullObservationsCore:
             
             mock_get_token.return_value = ("prod_token", "https://er-prod.com/")
             mock_adapter_class.return_value = AsyncMock(spec=RmwHubAdapter)
-            mock_handle_download.return_value = [Mock(), Mock(), Mock()]
+            mock_handle_download.return_value = 3  # Return count of observations
             mock_handle_upload.return_value = 2
-            mock_generate_batches.return_value = [[Mock(), Mock(), Mock()]]
             
             # Execute function
             result = await pull_24h_func(integration, action_config)
@@ -500,7 +514,6 @@ class TestActionPullObservationsCore:
             mock_get_token.assert_called_once()  # Don't check specific env since it depends on destination name
             mock_handle_download.assert_called_once()
             mock_handle_upload.assert_called_once()
-            mock_send_observations.assert_called_once()
             
             assert result["observations_downloaded"] == 3
             assert result["sets_updated"] == 2
@@ -540,20 +553,25 @@ class TestHandlerIntegration:
         mock_adapter.process_download.return_value = mock_observations
         mock_adapter.process_upload.return_value = (1, {"status": "success"})
         
-        with patch("app.actions.handlers.log_action_activity") as mock_log:
+        with patch("app.actions.handlers.log_action_activity") as mock_log, \
+             patch("app.actions.handlers.send_observations_to_gundi") as mock_send_observations, \
+             patch("app.actions.handlers.generate_batches") as mock_generate_batches:
+            
+            # Mock generate_batches to return the observations in batches
+            mock_generate_batches.return_value = [mock_observations[:2], mock_observations[2:]]
+            
             # Test download
             download_result = await handle_download(
-                mock_adapter, start_datetime, end_datetime, integration, environment, action_config
+            mock_adapter, start_datetime, end_datetime, integration, environment, action_config
             )
             
             # Test upload  
             upload_result = await handle_upload(
-                mock_adapter, start_datetime, integration, action_config
+            mock_adapter, start_datetime, integration, action_config
             )
         
         # Verify download results
-        assert download_result == mock_observations
-        assert len(download_result) == 4
+        assert download_result == 4
         
         # Verify upload results
         assert upload_result == 1

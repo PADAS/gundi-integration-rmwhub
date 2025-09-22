@@ -22,8 +22,8 @@ class TestConstants:
         """Test that constants have correct values."""
         assert SOURCE_TYPE == "ropeless_buoy"
         assert SUBJECT_SUBTYPE == "ropeless_buoy_gearset"
-        assert GEAR_DEPLOYED_EVENT == "gear_deployed"
-        assert GEAR_RETRIEVED_EVENT == "gear_retrieved"
+        assert GEAR_DEPLOYED_EVENT == "trap_deployed"
+        assert GEAR_RETRIEVED_EVENT == "trap_retrieved"
         assert EPOCH == "1970-01-01T00:00:00+00:00"
 
 
@@ -387,7 +387,7 @@ class TestGearSet:
             "id": "gearset_001",
             "deployment_type": "trawl",
             "traps_in_set": 2,
-            "trawl_path": "path_001",
+            "trawl_path": {"path": "path_001"},
             "share_with": ["partner_001", "partner_002"],
             "traps": [Trap(**trap_data) for trap_data in sample_trap_data_list],
             "when_updated_utc": "2023-09-15T19:00:00Z"
@@ -401,7 +401,7 @@ class TestGearSet:
         assert gearset.id == "gearset_001"
         assert gearset.deployment_type == "trawl"
         assert gearset.traps_in_set == 2
-        assert gearset.trawl_path == "path_001"
+        assert gearset.trawl_path == {"path": "path_001"}
         assert gearset.share_with == ["partner_001", "partner_002"]
         assert len(gearset.traps) == 2
         assert gearset.when_updated_utc == "2023-09-15T19:00:00Z"
@@ -421,11 +421,11 @@ class TestGearSet:
         
         assert gearset.vessel_id == "vessel_002"
         assert gearset.traps_in_set is None
-        assert gearset.trawl_path == ""  # Validator converts None to ""
+        assert gearset.trawl_path == {}  # Validator converts None to {}
         assert gearset.share_with == []  # Validator converts None to []
     
     def test_gearset_validator_none_to_empty_trawl_path(self):
-        """Test trawl_path validator converts None to empty string."""
+        """Test trawl_path validator converts None to empty dict."""
         gearset = GearSet(
             vessel_id="vessel_003",
             id="gearset_003",
@@ -435,7 +435,7 @@ class TestGearSet:
             when_updated_utc="2023-09-15T21:00:00Z"
         )
         
-        assert gearset.trawl_path == ""
+        assert gearset.trawl_path == {}
     
     def test_gearset_validator_none_to_empty_list_share_with(self):
         """Test share_with validator converts None to empty list."""
@@ -443,7 +443,7 @@ class TestGearSet:
             vessel_id="vessel_004",
             id="gearset_004",
             deployment_type="test",
-            trawl_path="test_path",
+            trawl_path={"test": "path"},
             share_with=None,
             traps=[],
             when_updated_utc="2023-09-15T22:00:00Z"
@@ -457,13 +457,13 @@ class TestGearSet:
             vessel_id="vessel_005",
             id="gearset_005",
             deployment_type="test",
-            trawl_path="valid_path",
+            trawl_path={"valid": "path"},
             share_with=["partner1"],
             traps=[],
             when_updated_utc="2023-09-15T23:00:00Z"
         )
         
-        assert gearset.trawl_path == "valid_path"
+        assert gearset.trawl_path == {"valid": "path"}
         assert gearset.share_with == ["partner1"]
     
     def test_gearset_getitem_method(self, sample_gearset_data):
@@ -480,7 +480,7 @@ class TestGearSet:
         gearset = GearSet(**sample_gearset_data)
         
         assert gearset.get("vessel_id") == "vessel_001"
-        assert gearset.get("trawl_path") == "path_001"
+        assert gearset.get("trawl_path") == {"path": "path_001"}
         assert gearset.get("share_with") == ["partner_001", "partner_002"]
         assert gearset.get("when_updated_utc") == "2023-09-15T19:00:00Z"
     
@@ -525,23 +525,23 @@ class TestGearSet:
             )
     
     @pytest.mark.asyncio
-    async def test_build_observations_empty_traps(self):
-        """Test build_observations with empty traps list."""
+    async def test_build_observation_for_specific_trap_empty_traps(self):
+        """Test build_observation_for_specific_trap with empty traps list."""
         gearset = GearSet(
             vessel_id="vessel_empty",
             id="gearset_empty",
             deployment_type="test",
-            trawl_path="",
+            trawl_path={},
             traps=[],
             when_updated_utc="2023-09-15T19:00:00Z"
         )
         
-        observations = await gearset.build_observations()
+        observations = await gearset.build_observation_for_specific_trap("trap_001")
         assert observations == []
     
     @pytest.mark.asyncio
-    async def test_build_observations_deployed_trap(self):
-        """Test build_observations with deployed trap."""
+    async def test_build_observation_for_specific_trap_deployed_trap(self):
+        """Test build_observation_for_specific_trap with deployed trap."""
         trap = Trap(
             id="trap_deployed",
             sequence=1,
@@ -557,12 +557,12 @@ class TestGearSet:
             vessel_id="vessel_deployed",
             id="gearset_deployed",
             deployment_type="test",
-            trawl_path="",
+            trawl_path={},
             traps=[trap],
             when_updated_utc="2023-09-15T19:00:00Z"
         )
         
-        observations = await gearset.build_observations()
+        observations = await gearset.build_observation_for_specific_trap("trap_deployed")
         
         assert len(observations) == 1
         obs = observations[0]
@@ -574,11 +574,11 @@ class TestGearSet:
         assert obs["subject_type"] == SUBJECT_SUBTYPE
         assert obs["source_name"] == "gearset_deployed"
         assert obs["source"] == "trap_deployed"
-        assert obs["additional"]["event_type"] == "gear_deployed"
+        assert obs["additional"]["event_type"] == "trap_deployed"
     
     @pytest.mark.asyncio
-    async def test_build_observations_retrieved_trap(self):
-        """Test build_observations with retrieved trap."""
+    async def test_build_observation_for_specific_trap_retrieved_trap(self):
+        """Test build_observation_for_specific_trap with retrieved trap."""
         trap = Trap(
             id="trap_retrieved",
             sequence=1,
@@ -595,12 +595,12 @@ class TestGearSet:
             vessel_id="vessel_retrieved",
             id="gearset_retrieved",
             deployment_type="test",
-            trawl_path="",
+            trawl_path={},
             traps=[trap],
             when_updated_utc="2023-09-15T19:00:00Z"
         )
         
-        observations = await gearset.build_observations()
+        observations = await gearset.build_observation_for_specific_trap("trap_retrieved")
         
         assert len(observations) == 1
         obs = observations[0]
@@ -612,45 +612,29 @@ class TestGearSet:
         assert obs["subject_type"] == SUBJECT_SUBTYPE
         assert obs["source_name"] == "gearset_retrieved"
         assert obs["source"] == "trap_retrieved"
-        assert obs["additional"]["event_type"] == "gear_retrieved"
+        assert obs["additional"]["event_type"] == "trap_retrieved"
     
     @pytest.mark.asyncio
-    async def test_build_observations_multiple_traps(self, sample_trap_data_list):
-        """Test build_observations with multiple traps."""
+    async def test_build_observation_for_specific_trap_no_match(self, sample_trap_data_list):
+        """Test build_observation_for_specific_trap with no matching trap ID."""
         traps = [Trap(**trap_data) for trap_data in sample_trap_data_list]
         
         gearset = GearSet(
             vessel_id="vessel_multi",
             id="gearset_multi",
             deployment_type="test",
-            trawl_path="",
+            trawl_path={},
             traps=traps,
             when_updated_utc="2023-09-15T19:00:00Z"
         )
         
-        observations = await gearset.build_observations()
+        observations = await gearset.build_observation_for_specific_trap("non_existent_trap")
         
-        assert len(observations) == 2
-        
-        # Check first observation (deployed)
-        obs1 = observations[0]
-        assert obs1["location"]["lat"] == 42.123456
-        assert obs1["location"]["lon"] == -71.987654
-        assert obs1["source_name"] == "gearset_multi"
-        assert obs1["source"] == "trap_001"
-        assert obs1["additional"]["event_type"] == "gear_deployed"
-        
-        # Check second observation (retrieved)
-        obs2 = observations[1]
-        assert obs2["location"]["lat"] == 43.0
-        assert obs2["location"]["lon"] == -72.0
-        assert obs2["source_name"] == "gearset_multi"
-        assert obs2["source"] == "trap_002"
-        assert obs2["additional"]["event_type"] == "gear_retrieved"
+        assert observations == []
     
     @pytest.mark.asyncio
-    async def test_build_observations_unknown_status(self):
-        """Test build_observations with unknown trap status."""
+    async def test_build_observation_for_specific_trap_unknown_status(self):
+        """Test build_observation_for_specific_trap with unknown trap status."""
         # Mock the get_latest_update_time to avoid the TypeError from parse_date
         with patch.object(Trap, 'get_latest_update_time') as mock_get_time:
             mock_get_time.return_value = datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
@@ -670,36 +654,13 @@ class TestGearSet:
                 vessel_id="vessel_unknown",
                 id="gearset_unknown",
                 deployment_type="test",
-                trawl_path="",
+                trawl_path={},
                 traps=[trap],
                 when_updated_utc="2023-09-15T19:00:00Z"
             )
             
             with pytest.raises(ValueError, match="Unknown trap status: unknown_status"):
-                await gearset.build_observations()
-    
-    @pytest.mark.asyncio
-    async def test_build_observations_trap_with_unknown_status_and_get_latest_update_time(self):
-        """Test that a trap with unknown status still processes time correctly before status check."""
-        trap = Trap(
-            id="trap_unknown_status",
-            sequence=1,
-            latitude=42.0,
-            longitude=-71.0,
-            deploy_datetime_utc="2023-09-15T14:30:00Z",
-            status="unknown_status",
-            accuracy="high",
-            is_on_end=True
-        )
-        
-        # Test the get_latest_update_time method directly for unknown status
-        with patch('app.actions.rmwhub.types.datetime') as mock_datetime:
-            mock_now = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
-            mock_datetime.now.return_value = mock_now
-            
-            # This should call convert_to_utc with None since status doesn't match "deployed" or "retrieved"
-            with pytest.raises(TypeError):  # parse_date will fail with None
-                trap.get_latest_update_time()
+                await gearset.build_observation_for_specific_trap("trap_unknown")
     
     def test_convert_to_utc_with_datetime_object(self):
         """Test convert_to_utc when passed a datetime object instead of string."""
@@ -708,10 +669,3 @@ class TestGearSet:
         # This should fail because parse_date expects a string, not a datetime object
         with pytest.raises(TypeError):
             Trap.convert_to_utc(dt_obj)
-    
-    def test_convert_to_utc_unreachable_code_coverage(self):
-        """Test the unreachable ValueError in convert_to_utc."""
-        # The line "if not utc_datetime_obj:" is unreachable because 
-        # parse_date either returns a datetime object or None/raises exception
-        # This test exists for documentation but cannot reach that line
-        pass

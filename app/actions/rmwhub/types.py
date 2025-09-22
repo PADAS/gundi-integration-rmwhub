@@ -79,7 +79,7 @@ class GearSet(BaseModel):
     @validator("trawl_path", pre=True)
     def none_to_empty(cls, v: object) -> object:
         if v is None:
-            return ""
+            return {}
         return v
 
     @validator("share_with", pre=True)
