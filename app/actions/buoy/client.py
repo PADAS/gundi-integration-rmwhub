@@ -186,7 +186,7 @@ class BuoyClient:
                 source_id=device_data.get("source_id", ""),
                 label=device_data.get("label", ""),
                 location=location,
-                last_updated=datetime.fromisoformat(device_data.get("last_updated", datetime.now().isoformat())),
+                last_updated=datetime.fromisoformat(datetime.now().isoformat()),
                 last_deployed=datetime.fromisoformat(device_data.get("last_deployed")) if device_data.get("last_deployed") else None
             )
             devices.append(device)
