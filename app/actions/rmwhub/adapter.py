@@ -302,6 +302,10 @@ class RmwHubAdapter:
             )
             return 0, []
 
+    def _get_serial_number_from_device_id(device_id: str, manufacturer: str) -> str:
+        if manufacturer.lower() == "edgetech":
+            return device_id.split("_")[0]
+        return device_id
     async def _create_rmw_update_from_er_gear(
         self,
         er_gear: BuoyGear,
@@ -325,6 +329,8 @@ class RmwHubAdapter:
                     retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status == "retrieved" else None,
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
                     is_on_end=i == len(er_gear.devices) - 1,
+                    manufacturer=er_gear.manufacturer,
+                    serial_number=self._get_serial_number_from_device_id(device.device_id, er_gear.manufacturer)
                 )
             )
         gear_set = GearSet(

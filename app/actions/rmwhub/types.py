@@ -17,6 +17,8 @@ class Trap(BaseModel):
     sequence: int
     latitude: float
     longitude: float
+    manufacturer: Optional[NoneStr]
+    serial_number: Optional[NoneStr]
     deploy_datetime_utc: Optional[NoneStr]
     surface_datetime_utc: Optional[NoneStr]
     retrieved_datetime_utc: Optional[NoneStr]
