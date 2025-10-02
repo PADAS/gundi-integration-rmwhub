@@ -302,10 +302,11 @@ class RmwHubAdapter:
             )
             return 0, []
 
-    def _get_serial_number_from_device_id(device_id: str, manufacturer: str) -> str:
+    def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -> str:
         if manufacturer.lower() == "edgetech":
             return device_id.split("_")[0]
         return device_id
+
     async def _create_rmw_update_from_er_gear(
         self,
         er_gear: BuoyGear,
