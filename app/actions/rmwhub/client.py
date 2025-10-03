@@ -33,7 +33,7 @@ class RmwHubClient:
             "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat(),  # Pull all data from the start date
         }
 
-        url = "https://ropeless.network/api" + "/search_hub/"
+        url = self.rmw_url + "/search_hub/"
 
         async with httpx.AsyncClient() as client:
             response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
