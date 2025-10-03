@@ -43,7 +43,6 @@ async def handle_download(
         f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
     rmw_sets = await rmw_adapter.download_data(start_datetime)
-    # rmw_sets = [s for s in rmw_sets if s.id == "D2CB3086-3141-4B61-8795-9E873D9E879B"]  # Only process active gearsets
     logger.info(
         f"{len(rmw_sets)} Gearsets Downloaded from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
@@ -131,7 +130,7 @@ async def action_pull_observations(
     current_datetime = datetime.now(timezone.utc)
     #! Forcing to sync the whole period
     # TODO: Removing this after figuring out the hauling problem
-    action_config.minutes_to_sync = 30 * 24 * 60  # 30 days in minutes
+    action_config.minutes_to_sync = 90 * 24 * 60  # 90 days in minutes
     sync_interval_minutes = action_config.minutes_to_sync
     start_datetime = current_datetime - timedelta(minutes=sync_interval_minutes)
     end_datetime = current_datetime
