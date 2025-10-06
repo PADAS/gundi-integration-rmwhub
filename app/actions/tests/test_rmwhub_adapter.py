@@ -1040,3 +1040,39 @@ class TestRmwHubAdapter:
         result = await adapter._create_rmw_update_from_er_gear(rmwhub_gear)
         
         assert result is None
+
+    def test_get_serial_number_from_device_id_edgetech(self, adapter):
+        """Test _get_serial_number_from_device_id with edgetech manufacturer."""
+        device_id = "ET123456_device001"
+        manufacturer = "edgetech"
+        
+        result = adapter._get_serial_number_from_device_id(device_id, manufacturer)
+        
+        assert result == "ET123456"
+
+    def test_get_serial_number_from_device_id_edgetech_case_insensitive(self, adapter):
+        """Test _get_serial_number_from_device_id with EDGETECH (uppercase) manufacturer."""
+        device_id = "ET789012_device002"
+        manufacturer = "EDGETECH"
+        
+        result = adapter._get_serial_number_from_device_id(device_id, manufacturer)
+        
+        assert result == "ET789012"
+
+    def test_get_serial_number_from_device_id_other_manufacturer(self, adapter):
+        """Test _get_serial_number_from_device_id with non-edgetech manufacturer (covers line 310)."""
+        device_id = "DEVICE123456"
+        manufacturer = "other_manufacturer"
+        
+        result = adapter._get_serial_number_from_device_id(device_id, manufacturer)
+        
+        assert result == "DEVICE123456"
+
+    def test_get_serial_number_from_device_id_empty_manufacturer(self, adapter):
+        """Test _get_serial_number_from_device_id with empty manufacturer (covers line 310)."""
+        device_id = "DEVICE789012"
+        manufacturer = ""
+        
+        result = adapter._get_serial_number_from_device_id(device_id, manufacturer)
+        
+        assert result == "DEVICE789012"

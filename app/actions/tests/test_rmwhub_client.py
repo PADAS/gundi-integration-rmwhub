@@ -99,7 +99,7 @@ class TestRmwHubClient:
         }
         
         mock_client.post.assert_called_once_with(
-            "https://ropeless.network/api/search_hub/",
+            "https://test.rmwhub.com/search_hub/",
             headers=RmwHubClient.HEADERS,
             json=expected_data
         )
