@@ -1,4 +1,3 @@
-# actions/configurations.py
 from typing import List
 import pydantic
 from .core import (

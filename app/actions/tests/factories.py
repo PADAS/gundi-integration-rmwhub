@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 import random
+import uuid
 from typing import Dict, List, Optional
-from app.actions.rmwhub import GearSet, Trap
+from app.actions.rmwhub.types import GearSet, Trap
+from app.actions.buoy.types import BuoyGear, BuoyDevice
 from datetime import datetime, timezone
 
 
@@ -147,3 +149,61 @@ class TrapFactory:
             release_type=release_type,
             is_on_end=is_on_end,
         )
+
+
+class GearFactory:
+    @staticmethod
+    def create(
+        id: str = None,
+        display_id: str = "test_gear_001",
+        name: str = "Test Gear",
+        status: str = "deployed",
+        last_updated: str = "2025-01-30T00:00:00Z",
+        type: str = "ropeless_buoy",
+        manufacturer: str = "rmwhub",
+        location: Optional[Dict] = None,
+        is_active: bool = True,
+        additional: Optional[Dict] = None,
+        devices: Optional[List[Dict]] = None,
+    ) -> BuoyGear:
+        """
+        Factory function to create a RmwGear object for unit testing.
+        """
+        if id is None:
+            id = str(uuid.uuid4())
+        
+        if location is None:
+            location = {"latitude": 40.0, "longitude": -70.0}
+            
+        if additional is None:
+            additional = {
+                "rmwhub_set_id": "test_set_001",
+                "vessel_id": "test_vessel",
+                "deployment_type": "test"
+            }
+        if devices is None:
+            devices = [
+                {
+                    "device_id": f"{display_id}_device_1",
+                    "label": "a",
+                    "location": {"latitude": 40.0, "longitude": -70.0},
+                    "last_updated": last_updated,
+                    "last_deployed": last_updated,
+                }
+            ]
+        
+        gear_data = {
+            "id": id,
+            "display_id": display_id,
+            "name": name,
+            "status": status,
+            "last_updated": last_updated,
+            "type": type,
+            "manufacturer": manufacturer,
+            "location": location,
+            "is_active": is_active,
+            "additional": additional,
+            "devices": devices,
+        }
+        
+        return BuoyGear(**gear_data)
