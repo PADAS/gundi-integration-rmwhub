@@ -280,7 +280,7 @@ class RmwHubAdapter:
                             action_id="pull_observations",
                             level=LogLevel.ERROR,
                             title=f"Upload failed with status {response.status_code}",
-                            data={"upload_task_id": upload_task_id},
+                            data={"upload_task_id": upload_task_id, "rmw_response": response.text, "rmw_sets": rmw_updates},
                         )
                         return 0, {}
                 except Exception as e:
