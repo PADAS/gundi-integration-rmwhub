@@ -171,9 +171,6 @@ class RmwHubAdapter:
         """
         # Build query parameters
         params = {}
-        if start_datetime:
-            params['updated_after'] = start_datetime.isoformat()
-        params['source_type'] = SOURCE_TYPE
         params['page_size'] = 1000
         if state:
             params['state'] = state
@@ -321,6 +318,9 @@ class RmwHubAdapter:
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
         for i, device in enumerate(er_gear.devices):
+            if not device.last_deployed:
+                logger.info(f"Skipping device {device.device_id} in gear {er_gear.name} due to missing last_deployed")
+                continue
             traps.append(
                 Trap(
                     id=device.source_id,
@@ -337,6 +337,8 @@ class RmwHubAdapter:
                     serial_number=self._get_serial_number_from_device_id(device.device_id, er_gear.manufacturer)
                 )
             )
+        if not traps:
+            return None
         gear_set = GearSet(
             vessel_id="",
             id=str(er_gear.id),

@@ -180,14 +180,15 @@ class BuoyClient:
                 latitude=device_data.get("location", {}).get("latitude", 0.0),
                 longitude=device_data.get("location", {}).get("longitude", 0.0)
             )
-            
+            last_deployed_str = device_data.get("last_deployed")
+            last_deployed = datetime.fromisoformat(last_deployed_str.replace("Z", "+00:00")) if last_deployed_str else None
             device = BuoyDevice(
                 device_id=device_data.get("device_id", ""),
                 source_id=device_data.get("source_id", ""),
                 label=device_data.get("label", ""),
                 location=location,
                 last_updated=datetime.fromisoformat(datetime.now().isoformat()),
-                last_deployed=datetime.fromisoformat(device_data.get("last_deployed")) if device_data.get("last_deployed") else None
+                last_deployed=last_deployed,
             )
             devices.append(device)
         

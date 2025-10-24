@@ -373,32 +373,6 @@ class TestRmwHubAdapter:
         assert result_gears[0] == sample_buoy_gear
 
     @pytest.mark.asyncio
-    async def test_iter_er_gears_with_start_datetime(self, adapter, sample_buoy_gear):
-        """Test iterating over EarthRanger gears with start datetime filter."""
-        start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)
-        
-        # Track the parameters passed to iter_gears
-        captured_params = {}
-        
-        async def mock_iter_gears(params=None):
-            nonlocal captured_params
-            captured_params = params
-            yield sample_buoy_gear
-        
-        adapter.gear_client.iter_gears = mock_iter_gears
-        
-        result_gears = []
-        async for gear in adapter.iter_er_gears(start_datetime=start_datetime):
-            result_gears.append(gear)
-        
-        expected_params = {
-            'updated_after': start_datetime.isoformat(),
-            'source_type': 'ropeless_buoy',
-            'page_size': 1000
-        }
-        assert captured_params == expected_params
-
-    @pytest.mark.asyncio
     async def test_process_upload_success(self, adapter, sample_buoy_gear):
         """Test successful upload process."""
         start_datetime = datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc)

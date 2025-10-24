@@ -97,8 +97,8 @@ class TestHandleDownload:
         mock_rmw_adapter.download_data.return_value = mock_gear_sets
         mock_rmw_adapter.process_download.return_value = mock_observations
         
-        with patch("app.actions.handlers.log_action_activity") as mock_log, \
-             patch("app.actions.handlers.send_observations_to_gundi") as mock_send_observations, \
+        with patch("app.actions.handlers.log_action_activity", new_callable=AsyncMock) as mock_log, \
+             patch("app.actions.handlers.send_observations_to_gundi", new_callable=AsyncMock) as mock_send_observations, \
              patch("app.actions.handlers.generate_batches") as mock_generate_batches:
             
             # Mock generate_batches to return the observations in batches
@@ -112,31 +112,31 @@ class TestHandleDownload:
                 environment,
                 action_config
             )
-        
-        # Verify adapter methods were called
-        mock_rmw_adapter.download_data.assert_called_once_with(start_datetime)
-        mock_rmw_adapter.process_download.assert_called_once_with(mock_gear_sets)
-        
-        # Verify send_observations_to_gundi was called for each batch
-        assert mock_send_observations.call_count == 2
-        mock_send_observations.assert_any_call(
-            observations=mock_observations[:2], integration_id=str(integration.id)
-        )
-        mock_send_observations.assert_any_call(
-            observations=mock_observations[2:], integration_id=str(integration.id)
-        )
-        
-        # Verify logging was called
-        assert mock_log.call_count == 1
-        log_call = mock_log.call_args_list[0]
-        assert log_call[1]["integration_id"] == integration.id
-        assert log_call[1]["action_id"] == "pull_observations"
-        assert log_call[1]["level"] == LogLevel.INFO
-        assert log_call[1]["title"] == "Extracting observations with filter.."
-        assert log_call[1]["data"]["gear_sets_to_process"] == 3
-        
-        # Verify result (should return the count of observations)
-        assert result == len(mock_observations)
+            
+            # Verify adapter methods were called
+            mock_rmw_adapter.download_data.assert_called_once_with(start_datetime)
+            mock_rmw_adapter.process_download.assert_called_once_with(mock_gear_sets)
+            
+            # Verify send_observations_to_gundi was called for each batch
+            assert mock_send_observations.call_count == 2
+            mock_send_observations.assert_any_call(
+                observations=mock_observations[:2], integration_id=str(integration.id)
+            )
+            mock_send_observations.assert_any_call(
+                observations=mock_observations[2:], integration_id=str(integration.id)
+            )
+            
+            # Verify logging was called
+            assert mock_log.call_count == 1
+            log_call = mock_log.call_args_list[0]
+            assert log_call[1]["integration_id"] == integration.id
+            assert log_call[1]["action_id"] == "pull_observations"
+            assert log_call[1]["level"] == LogLevel.INFO
+            assert log_call[1]["title"] == "Extracting observations with filter.."
+            assert log_call[1]["data"]["gear_sets_to_process"] == 3
+            
+            # Verify result (should return the count of observations)
+            assert result == len(mock_observations)
     
     @pytest.mark.asyncio
     async def test_handle_download_success_no_data(
