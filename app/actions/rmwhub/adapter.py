@@ -145,7 +145,7 @@ class RmwHubAdapter:
                 
                 if er_gear:
                     if (trap.status == "deployed" and er_gear.status == "deployed") or \
-                       (trap.status == "retrieved" and er_gear.status == "retrieved"):
+                       (trap.status == "retrieved" and er_gear.status == "hauled"):
                         matched_status_traps.append(trap.id)
                         continue
 
