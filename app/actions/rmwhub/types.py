@@ -133,7 +133,6 @@ class GearSet(BaseModel):
                 "additional": {
                     "event_type": event_type,
                     "raw": self.dict(),
-                    "example_field": "example_value"  # Placeholder for any additional fields
                 }
             }
 
