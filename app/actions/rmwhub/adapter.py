@@ -139,6 +139,10 @@ class RmwHubAdapter:
         for gearset in rmw_sets:
             for trap in gearset.traps:
                 er_gear = trap_id_to_gear_mapping.get(trap.id)
+
+                if er_gear and er_gear.display_id != gearset.id:
+                    continue # That trap is deployed in multiple gears/sets, and that's not the correct one
+
                 if not er_gear and trap.status == "retrieved":
                     skipped_retrieved_traps_missing_in_er.append(trap.id)
                     continue
