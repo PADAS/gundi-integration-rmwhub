@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, AsyncIterator
+from typing import List, Optional, Tuple, AsyncIterator, Dict, Any
 
 import hashlib
 import json
@@ -6,6 +6,7 @@ import logging
 import uuid
 from datetime import datetime
 
+import aiohttp
 import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
 from erclient import ERClient
@@ -13,7 +14,7 @@ from app.services.activity_logger import log_action_activity
 from ..buoy.client import BuoyClient
 from ..buoy.types import BuoyGear
 from .client import RmwHubClient
-from .types import GearSet, Trap, SOURCE_TYPE
+from .types import GearSet, Trap
 
 logger = logging.getLogger(__name__)
 
@@ -120,9 +121,10 @@ class RmwHubAdapter:
 
         return gearsets
 
-    async def process_download(self, rmw_sets: List[GearSet]) -> List:
+    async def process_download(self, rmw_sets: List[GearSet]) -> List[Dict[str, Any]]:
         """
-        Process the sets from the RMW Hub API.
+        Process the sets from the RMW Hub API and convert them to gear payloads.
+        Returns a list of gear payloads ready to be sent to the Buoy API.
         """
         gears = await self.gear_client.get_all_gears()
 
@@ -133,15 +135,20 @@ class RmwHubAdapter:
             if device.source_id
         }
 
-        observations = []
+        gear_payloads = []
         skipped_retrieved_traps_missing_in_er = []
         matched_status_traps = []
+        
         for gearset in rmw_sets:
+            # Group traps by their deployment/haul status
+            traps_to_deploy = []
+            traps_to_haul = []
+            
             for trap in gearset.traps:
                 er_gear = trap_id_to_gear_mapping.get(trap.id)
 
                 if er_gear and er_gear.display_id != gearset.id:
-                    continue # That trap is deployed in multiple gears/sets, and that's not the correct one
+                    continue  # That trap is deployed in multiple gears/sets, and that's not the correct one
 
                 if not er_gear and trap.status == "retrieved":
                     skipped_retrieved_traps_missing_in_er.append(trap.id)
@@ -152,12 +159,148 @@ class RmwHubAdapter:
                        (trap.status == "retrieved" and er_gear.status == "hauled"):
                         matched_status_traps.append(trap.id)
                         continue
-
-                trap_observation = await gearset.build_observation_for_specific_trap(trap.id)
-                observations.extend(trap_observation)
+                
+                # Separate traps by status
+                if trap.status == "deployed":
+                    traps_to_deploy.append(trap)
+                elif trap.status == "retrieved":
+                    traps_to_haul.append(trap)
+            
+            # Create gear payloads for deployment
+            if traps_to_deploy:
+                payload = self._create_gear_payload_from_gearset(
+                    gearset,
+                    traps_to_deploy,
+                    device_status="deployed"
+                )
+                gear_payloads.append(payload)
+            
+            # Create gear payloads for hauling
+            if traps_to_haul:
+                payload = self._create_gear_payload_from_gearset(
+                    gearset,
+                    traps_to_haul,
+                    device_status="hauled"
+                )
+                gear_payloads.append(payload)
+        
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
         logger.info(f"Skipped matching {len(matched_status_traps)} traps with same status in EarthRanger: {matched_status_traps}")
-        return observations
+        logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
+        
+        return gear_payloads
+
+    def _create_gear_payload_from_gearset(
+        self,
+        gearset: GearSet,
+        traps: List[Trap],
+        device_status: str
+    ) -> Dict[str, Any]:
+        """
+        Create a gear payload from a RMW Hub gearset in the format expected by the Buoy API.
+        
+        Args:
+            gearset: The RMW Hub gear set
+            traps: List of traps to include in this payload
+            device_status: Status of the devices (deployed/hauled)
+        
+        Returns:
+            Dict in the format expected by /api/v2/gears/ POST endpoint
+        """
+        devices = []
+        
+        for trap in traps:
+            # Get the appropriate timestamp based on status
+            if device_status == "deployed":
+                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
+                last_updated = last_deployed
+            else:  # hauled
+                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
+                last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+            
+            device = {
+                "mfr_device_id": trap.id,
+                "mfr_id": "rmwhub",
+                "last_deployed": last_deployed,
+                "last_updated": last_updated,
+                "device_status": device_status,
+                "positioning_type": "gps",
+                "release_type": trap.release_type or "acoustic",
+                "location": {
+                    "latitude": trap.latitude,
+                    "longitude": trap.longitude,
+                },
+                "device_additional_data": {
+                    "sequence": trap.sequence,
+                    "accuracy": trap.accuracy,
+                    "is_on_end": trap.is_on_end,
+                    "manufacturer": trap.manufacturer,
+                    "serial_number": trap.serial_number,
+                }
+            }
+            devices.append(device)
+        
+        # Determine deployment type
+        deployment_type = gearset.deployment_type or ("trawl" if len(devices) > 1 else "single")
+        
+        # Build payload
+        payload = {
+            "owner_id": gearset.vessel_id or "rmwhub",
+            "deployment_type": deployment_type,
+            "set_id": gearset.id,
+            "set_display_id": gearset.id,
+            "devices_in_set": len(devices),
+            "devices": devices,
+        }
+        
+        # Add initial_deployment_date only for new deployments
+        if device_status == "deployed" and traps:
+            # Use the earliest deployment time from the traps
+            earliest_deployment = min(
+                trap.deploy_datetime_utc for trap in traps if trap.deploy_datetime_utc
+            )
+            if earliest_deployment:
+                payload["initial_deployment_date"] = earliest_deployment
+        
+        # Add additional metadata
+        if gearset.trawl_path:
+            payload["set_additional_data"] = {
+                "trawl_path": gearset.trawl_path
+            }
+        
+        return payload
+
+    async def send_gear_to_buoy_api(self, gear_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send gear payload to the Buoy API POST endpoint.
+
+        Args:
+            gear_payload: The gear payload in the format expected by /api/v2/gears/
+
+        Returns:
+            Dict containing the API response
+        """
+        url = f"{self.gear_client.er_site}api/v1/gears/"
+        headers = {
+            "Authorization": f"Bearer {self.gear_client.er_token}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, json=gear_payload, headers=headers) as response:
+                    response_text = await response.text()
+                    if response.status in [200, 201]:
+                        logger.info(f"Successfully sent gear set to Buoy API: {response.status}")
+                        return {"status": "success", "status_code": response.status, "response": response_text}
+                    else:
+                        logger.error(
+                            f"Failed to send gear set to Buoy API. Status: {response.status}, Response: {response_text}"
+                        )
+                        return {"status": "error", "status_code": response.status, "response": response_text}
+            except Exception as e:
+                logger.exception(f"Exception while sending gear to Buoy API: {e}")
+                return {"status": "error", "error": str(e)}
 
 
     async def iter_er_gears(self, start_datetime: datetime = None, state: str = None) -> AsyncIterator[BuoyGear]:

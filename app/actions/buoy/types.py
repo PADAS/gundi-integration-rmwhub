@@ -5,10 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-SOURCE_TYPE = "ropeless_buoy"
-SUBJECT_SUBTYPE = "ropeless_buoy_gearset"
-GEAR_DEPLOYED_EVENT = "trap_deployed"
-GEAR_RETRIEVED_EVENT = "trap_retrieved"
+
 class Environment(Enum):
     DEV = "Buoy Dev"
     STAGE = "Buoy Staging"
