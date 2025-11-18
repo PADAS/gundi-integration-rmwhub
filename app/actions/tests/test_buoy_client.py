@@ -624,8 +624,8 @@ class TestBuoyClient:
             assert len(gears) == 0
             assert isinstance(gears, list)
 
-    def test_parse_gear_device_with_missing_source_id(self, client):
-        """Test parsing device data without source_id field."""
+    def test_parse_gear_device_with_missing_mfr_device_id(self, client):
+        """Test parsing device data without mfr_device_id field."""
         data = {
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",
@@ -634,13 +634,13 @@ class TestBuoyClient:
                 "label": "Device 1",
                 "location": {"latitude": 45.0, "longitude": -120.0},
                 "last_updated": "2023-10-01T12:00:00"
-                # source_id is missing, should default to empty string
+                # mfr_device_id is missing, should default to empty string
             }]
         }
         
         gear = client._parse_gear(data)
         assert len(gear.devices) == 1
-        assert gear.devices[0].source_id == ""  # Should default to empty string
+        assert gear.devices[0].mfr_device_id == ""  # Should default to empty string
 
     def test_parse_gear_with_missing_manufacturer(self, client):
         """Test parsing gear data without manufacturer field."""

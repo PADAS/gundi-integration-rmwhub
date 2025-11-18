@@ -5,7 +5,6 @@ from pydantic import BaseModel, NoneStr, validator
 
 logger = logging.getLogger(__name__)
 
-
 class Trap(BaseModel):
     id: str
     sequence: int

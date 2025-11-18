@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List
@@ -81,24 +80,55 @@ async def handle_download(
     gear_payloads = await rmw_adapter.process_download(rmw_sets)
     logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
     
-    # Send gear payloads directly to Buoy API
-    for payload in gear_payloads:
-        logger.info(f"Sending gear payload to Buoy API: {json.dumps(payload, indent=2, default=str)}")
-        result = await rmw_adapter.send_gear_to_buoy_api(payload)
-        logger.info(f"Sent gear set to Buoy API: {result}")
+    # Send gear payloads directly to Buoy API and track results
+    success_count = 0
+    failure_count = 0
+    failed_payloads = []
     
+    for idx, payload in enumerate(gear_payloads):
+        logger.info(f"Sending gear payload {idx + 1}/{len(gear_payloads)} to Buoy API")
+        result = await rmw_adapter.send_gear_to_buoy_api(payload)
+        if result.get("status") == "success":
+            success_count += 1
+            logger.info(f"Successfully sent gear set {idx + 1}/{len(gear_payloads)} to Buoy API")
+        else:
+            failure_count += 1
+            error_info = result.get("error") or result.get("response", "Unknown error")
+            logger.error(
+                f"Failed to send gear set {idx + 1}/{len(gear_payloads)} to Buoy API: {error_info}"
+            )
+            failed_payloads.append({"index": idx, "error": error_info})
+    
+    # Log activity with success/failure counts
+    log_level = LogLevel.INFO if failure_count == 0 else LogLevel.WARNING
+    title = (
+        f"Processed {len(gear_payloads)} gear sets: "
+        f"{success_count} successful, {failure_count} failed"
+    )
     await log_action_activity(
         integration_id=integration.id,
         action_id="pull_observations",
-        level=LogLevel.INFO,
-        title="Pulled data from RMW Hub API and sent to Buoy API",
+        level=log_level,
+        title=title,
         data={
-            "gear_payloads_sent": len(gear_payloads),
+            "total": len(gear_payloads),
+            "success": success_count,
+            "failures": failure_count,
+            "gear_sets_extracted": len(rmw_sets),
+        } if failure_count > 0 else {
+            "total": len(gear_payloads),
+            "success": success_count,
+            "gear_sets_extracted": len(rmw_sets),
         },
         config_data=action_config.dict(),
     )
     
-    return len(gear_payloads)
+    return {
+        "total": len(gear_payloads),
+        "success": success_count,
+        "failures": failure_count,
+        "failed_payloads": failed_payloads if failed_payloads else None,
+    }
 
 
 async def handle_upload(
@@ -158,8 +188,8 @@ async def action_pull_observations(
     auth_config = AuthenticateConfig.parse_obj(auth_config_data.data)
     er_token = auth_config.er_token.get_secret_value()
     
-    total_gear_payloads = 0
-    num_sets_updated = 0
+    destination_result = {}
+    
     for destination in connection_details.destinations:
         environment = Environment(destination.name)
         
@@ -179,16 +209,18 @@ async def action_pull_observations(
             er_destination + "api/v1.0"
         )
 
-        num_gear_payloads = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
-        total_gear_payloads += num_gear_payloads
-
+        download_result = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
         num_sets = await handle_upload(rmw_adapter, start_datetime, integration, action_config)
-        num_sets_updated += num_sets
+        
+        destination_key = f"{destination.id}_{destination.name}"
+        destination_result[destination_key] = {
+            "gear_payloads_total": download_result["total"],
+            "gear_payloads_successful": download_result["success"],
+            "gear_payloads_failed": download_result["failures"],
+            "sets_updated_in_rmwhub": num_sets,
+        }
 
-    return {
-        "gear_payloads_sent": total_gear_payloads,
-        "sets_updated": num_sets_updated,
-    }
+    return destination_result
 
 @activity_logger()
 @crontab_schedule("10 0 * * *")  # Run every 24 hours at 12:10 AM
@@ -210,8 +242,8 @@ async def action_pull_observations_24_hour_sync(
     auth_config = AuthenticateConfig.parse_obj(auth_config_data.data)
     er_token = auth_config.er_token.get_secret_value()
     
-    total_gear_payloads = 0
-    num_sets_updated = 0
+    destination_result = {}
+    
     for destination in connection_details.destinations:
         environment = Environment(destination.name)
         
@@ -231,13 +263,15 @@ async def action_pull_observations_24_hour_sync(
             er_destination + "api/v1.0"
         )
 
-        num_gear_payloads = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
-        total_gear_payloads += num_gear_payloads
-
+        download_result = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
         num_sets = await handle_upload(rmw_adapter, start_datetime, integration, action_config)
-        num_sets_updated += num_sets
+        
+        destination_key = f"{destination.id}_{destination.name}"
+        destination_result[destination_key] = {
+            "gear_payloads_total": download_result["total"],
+            "gear_payloads_successful": download_result["success"],
+            "gear_payloads_failed": download_result["failures"],
+            "sets_updated_in_rmwhub": num_sets,
+        }
 
-    return {
-        "gear_payloads_sent": total_gear_payloads,
-        "sets_updated": num_sets_updated,
-    }
+    return destination_result

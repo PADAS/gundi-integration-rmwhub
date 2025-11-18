@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from app.actions.buoy.types import SOURCE_TYPE, SUBJECT_SUBTYPE, Environment, DeviceLocation, BuoyDevice, BuoyGear
+from app.actions.buoy.types import Environment, DeviceLocation, BuoyDevice, BuoyGear
 
 
 class TestEnvironment:
@@ -94,8 +94,8 @@ class TestBuoyDevice:
     def test_buoy_device_creation_with_deployment(self, sample_location, sample_datetime):
         """Test successful BuoyDevice creation with deployment date."""
         device = BuoyDevice(
-            source_id="2a2d6d72-1401-4838-ac78-c342a46fccc8",
             device_id="device_001",
+            mfr_device_id="mfr_001",
             label="Test Buoy Device",
             location=sample_location,
             last_updated=sample_datetime,
@@ -111,8 +111,8 @@ class TestBuoyDevice:
     def test_buoy_device_creation_without_deployment(self, sample_location, sample_datetime):
         """Test successful BuoyDevice creation without deployment date."""
         device = BuoyDevice(
-            source_id="535a9c13-c2db-4117-a6f3-af49818bebac",
             device_id="device_002",
+            mfr_device_id="mfr_002",
             label="Undeployed Device",
             location=sample_location,
             last_updated=sample_datetime,
@@ -128,8 +128,8 @@ class TestBuoyDevice:
     def test_buoy_device_optional_deployment_default(self, sample_location, sample_datetime):
         """Test BuoyDevice with default None for last_deployed."""
         device = BuoyDevice(
-            source_id="b001ec29-51dc-4f0a-89d2-0f21e88097fa",
             device_id="device_003",
+            mfr_device_id="mfr_003",
             label="Default Device",
             location=sample_location,
             last_updated=sample_datetime
@@ -189,16 +189,16 @@ class TestBuoyGear:
         """Fixture for sample BuoyDevice list."""
         return [
             BuoyDevice(
-                source_id="d055acdc-f7e2-4806-82ef-39c743579be3",
                 device_id="device_001",
+                mfr_device_id="mfr_001",
                 label="Device 1",
                 location=sample_location,
                 last_updated=sample_datetime,
                 last_deployed=sample_datetime
             ),
             BuoyDevice(
-                source_id="d155acdc-f7e2-4806-82ef-39c743579be4",
                 device_id="device_002",
+                mfr_device_id="mfr_002",
                 label="Device 2",
                 location=DeviceLocation(latitude=43.0, longitude=-72.0),
                 last_updated=sample_datetime,
@@ -310,116 +310,3 @@ class TestBuoyGear:
                 manufacturer="Test Manufacturer"
             )
     
-    def test_create_haul_observation_single_device(self, sample_gear_id, sample_datetime, sample_location):
-        """Test create_haul_observation with single device."""
-        device = BuoyDevice(
-            source_id="0f7f896e-2f1c-45f1-81f2-0a006578b018",
-            device_id="device_001",
-            label="Single Device",
-            location=sample_location,
-            last_updated=sample_datetime,
-            last_deployed=sample_datetime
-        )
-        
-        gear = BuoyGear(
-            id=sample_gear_id,
-            display_id="GEAR_SINGLE",
-            name="Single Device Gear",
-            status="active",
-            last_updated=sample_datetime,
-            devices=[device],
-            type="fishing_gear",
-            manufacturer="Test Manufacturer"
-        )
-        
-        recorded_at = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
-        observations = gear.create_haul_observation(recorded_at)
-        
-        assert len(observations) == 1
-        observation = observations[0]
-        
-        assert observation["source_name"] == "GEAR_SINGLE"
-        assert observation["source"] == "device_001"
-        assert observation["type"] == SOURCE_TYPE
-        assert observation["subject_type"] == SUBJECT_SUBTYPE
-        assert observation["location"]["lat"] == 42.123456
-        assert observation["location"]["lon"] == -71.987654
-        assert observation["recorded_at"] == recorded_at
-    
-    def test_create_haul_observation_multiple_devices(self, sample_gear_id, sample_datetime, sample_devices):
-        """Test create_haul_observation with multiple devices."""
-        gear = BuoyGear(
-            id=sample_gear_id,
-            display_id="GEAR_MULTI",
-            name="Multi Device Gear",
-            status="active",
-            last_updated=sample_datetime,
-            devices=sample_devices,
-            type="fishing_gear",
-            manufacturer="Test Manufacturer"
-        )
-        
-        recorded_at = datetime(2023, 10, 1, 15, 30, 0, tzinfo=timezone.utc)
-        observations = gear.create_haul_observation(recorded_at)
-        
-        assert len(observations) == 2
-        
-        # Check first observation
-        obs1 = observations[0]
-        assert obs1["source_name"] == "GEAR_MULTI"
-        assert obs1["source"] == "device_001"
-        assert obs1["type"] == SOURCE_TYPE
-        assert obs1["subject_type"] == SUBJECT_SUBTYPE
-        assert obs1["location"]["lat"] == 42.123456
-        assert obs1["location"]["lon"] == -71.987654
-        assert obs1["recorded_at"] == recorded_at
-        
-        # Check second observation
-        obs2 = observations[1]
-        assert obs2["source_name"] == "GEAR_MULTI"
-        assert obs2["source"] == "device_002"
-        assert obs2["type"] == SOURCE_TYPE
-        assert obs2["subject_type"] == SUBJECT_SUBTYPE
-        assert obs2["location"]["lat"] == 43.0
-        assert obs2["location"]["lon"] == -72.0
-        assert obs2["recorded_at"] == recorded_at
-    
-    def test_create_haul_observation_empty_devices(self, sample_gear_id, sample_datetime):
-        """Test create_haul_observation with no devices."""
-        gear = BuoyGear(
-            id=sample_gear_id,
-            display_id="GEAR_EMPTY",
-            name="Empty Gear",
-            status="active",
-            last_updated=sample_datetime,
-            devices=[],
-            type="fishing_gear",
-            manufacturer="Test Manufacturer"
-        )
-        
-        recorded_at = datetime(2023, 10, 1, 9, 0, 0, tzinfo=timezone.utc)
-        observations = gear.create_haul_observation(recorded_at)
-        
-        assert len(observations) == 0
-        assert observations == []
-    
-    def test_create_haul_observation_imports_correctly(self, sample_gear_id, sample_datetime, sample_devices):
-        """Test that create_haul_observation correctly imports constants."""
-        gear = BuoyGear(
-            id=sample_gear_id,
-            display_id="GEAR_IMPORT",
-            name="Import Test Gear",
-            status="active",
-            last_updated=sample_datetime,
-            devices=sample_devices,
-            type="fishing_gear",
-            manufacturer="Test Manufacturer"
-        )
-        
-        recorded_at = datetime.now(timezone.utc)
-        observations = gear.create_haul_observation(recorded_at)
-        
-        # Verify that the constants are imported and used correctly
-        for observation in observations:
-            assert observation["type"] == SOURCE_TYPE
-            assert observation["subject_type"] == SUBJECT_SUBTYPE

@@ -37,23 +37,3 @@ class BuoyGear(BaseModel):
     manufacturer: str
     location: Optional[DeviceLocation] = None
     additional: Optional[Dict[str, Any]] = None
-
-    def create_haul_observation(self, recorded_at: datetime) -> List[Dict[str, Any]]:
-        """
-        Create an observation record for hauling the buoy gear.
-        """
-
-        return [
-            {
-                "source_name": self.display_id,
-                "source": device.device_id,
-                "type": SOURCE_TYPE,
-                "subject_type": SUBJECT_SUBTYPE,
-                "location": {
-                    "lat": device.location.latitude,
-                    "lon": device.location.longitude,
-                },
-                "recorded_at": recorded_at,
-            }
-            for device in self.devices
-        ]
