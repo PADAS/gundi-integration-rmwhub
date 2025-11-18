@@ -151,7 +151,7 @@ class TestBuoyClient:
         
         # Check first device
         device1 = gear.devices[0]
-        assert device1.device_id == "DEV001"
+        assert device1.device_id == "100a5ed3-e26c-4904-8a6a-f9cd57343a37"
         assert device1.label == "Device 1"
         assert device1.location.latitude == 45.0
         assert device1.location.longitude == -120.0
@@ -159,7 +159,7 @@ class TestBuoyClient:
         
         # Check second device (no last_deployed)
         device2 = gear.devices[1]
-        assert device2.device_id == "DEV002"
+        assert device2.device_id == "2962e425-fcf8-4506-bd9f-672943c29196"
         assert device2.last_deployed is None
     
     def test_parse_gear_minimal_data(self, client):
