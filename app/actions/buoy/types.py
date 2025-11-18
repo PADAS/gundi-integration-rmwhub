@@ -5,10 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-SOURCE_TYPE = "ropeless_buoy"
-SUBJECT_SUBTYPE = "ropeless_buoy_gearset"
-GEAR_DEPLOYED_EVENT = "trap_deployed"
-GEAR_RETRIEVED_EVENT = "trap_retrieved"
+
 class Environment(Enum):
     DEV = "Buoy Dev"
     STAGE = "Buoy Staging"
@@ -22,7 +19,7 @@ class DeviceLocation(BaseModel):
 
 class BuoyDevice(BaseModel):
     device_id: str
-    source_id: str
+    mfr_device_id: str
     label: str
     location: DeviceLocation
     last_updated: datetime
@@ -40,23 +37,3 @@ class BuoyGear(BaseModel):
     manufacturer: str
     location: Optional[DeviceLocation] = None
     additional: Optional[Dict[str, Any]] = None
-
-    def create_haul_observation(self, recorded_at: datetime) -> List[Dict[str, Any]]:
-        """
-        Create an observation record for hauling the buoy gear.
-        """
-
-        return [
-            {
-                "source_name": self.display_id,
-                "source": device.device_id,
-                "type": SOURCE_TYPE,
-                "subject_type": SUBJECT_SUBTYPE,
-                "location": {
-                    "lat": device.location.latitude,
-                    "lon": device.location.longitude,
-                },
-                "recorded_at": recorded_at,
-            }
-            for device in self.devices
-        ]

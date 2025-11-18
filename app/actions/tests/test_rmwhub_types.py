@@ -5,27 +5,9 @@ from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
 from app.actions.rmwhub.types import (
-    SOURCE_TYPE,
-    SUBJECT_SUBTYPE,
-    GEAR_DEPLOYED_EVENT,
-    GEAR_RETRIEVED_EVENT,
-    EPOCH,
     Trap,
     GearSet
 )
-
-
-class TestConstants:
-    """Test cases for module constants."""
-    
-    def test_constants_values(self):
-        """Test that constants have correct values."""
-        assert SOURCE_TYPE == "ropeless_buoy"
-        assert SUBJECT_SUBTYPE == "ropeless_buoy_gearset"
-        assert GEAR_DEPLOYED_EVENT == "trap_deployed"
-        assert GEAR_RETRIEVED_EVENT == "trap_retrieved"
-        assert EPOCH == "1970-01-01T00:00:00+00:00"
-
 
 class TestTrap:
     """Test cases for the Trap model."""
@@ -156,6 +138,7 @@ class TestTrap:
                 is_on_end=True
             )
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     @patch('app.actions.rmwhub.types.datetime')
     def test_get_latest_update_time_deployed_status_with_deploy_time(self, mock_datetime):
         """Test get_latest_update_time for deployed status with deploy time."""
@@ -177,6 +160,7 @@ class TestTrap:
         expected = datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
         assert result == expected
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     @patch('app.actions.rmwhub.types.datetime')
     def test_get_latest_update_time_deployed_status_no_deploy_time(self, mock_datetime):
         """Test get_latest_update_time for deployed status without deploy time."""
@@ -201,6 +185,7 @@ class TestTrap:
             mock_convert.assert_called_once_with(mock_now)
             assert result == mock_now
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     def test_get_latest_update_time_retrieved_status_with_retrieved_time(self):
         """Test get_latest_update_time for retrieved status with retrieved time."""
         trap = Trap(
@@ -220,6 +205,7 @@ class TestTrap:
         expected = datetime(2023, 9, 15, 17, 30, 0, tzinfo=timezone.utc)
         assert result == expected
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     def test_get_latest_update_time_retrieved_status_with_surface_time(self):
         """Test get_latest_update_time for retrieved status with surface time only."""
         trap = Trap(
@@ -239,6 +225,7 @@ class TestTrap:
         expected = datetime(2023, 9, 15, 16, 0, 0, tzinfo=timezone.utc)
         assert result == expected
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     def test_get_latest_update_time_retrieved_status_with_deploy_time_only(self):
         """Test get_latest_update_time for retrieved status with deploy time only."""
         trap = Trap(
@@ -258,6 +245,7 @@ class TestTrap:
         expected = datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
         assert result == expected
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     @patch('app.actions.rmwhub.types.datetime')
     def test_get_latest_update_time_retrieved_status_no_times(self, mock_datetime):
         """Test get_latest_update_time for retrieved status with no times."""
@@ -283,6 +271,7 @@ class TestTrap:
             mock_convert.assert_called_once_with(mock_now)
             assert result == mock_now
     
+    @pytest.mark.skip(reason="Method convert_to_utc was removed in refactoring")
     def test_convert_to_utc_valid_string(self):
         """Test convert_to_utc with valid datetime string."""
         datetime_str = "2023-09-15T14:30:00Z"
@@ -290,6 +279,7 @@ class TestTrap:
         expected = datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
         assert result == expected
     
+    @pytest.mark.skip(reason="Method convert_to_utc was removed in refactoring")
     def test_convert_to_utc_different_formats(self):
         """Test convert_to_utc with different datetime formats."""
         # ISO format
@@ -302,6 +292,7 @@ class TestTrap:
         expected2 = datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)
         assert result2 == expected2
     
+    @pytest.mark.skip(reason="Method get_latest_update_time was removed in refactoring")
     @patch('app.actions.rmwhub.types.datetime')
     def test_get_latest_update_time_unknown_status(self, mock_datetime):
         """Test get_latest_update_time for unknown status (traptime remains None)."""
@@ -323,6 +314,7 @@ class TestTrap:
         with pytest.raises(TypeError):
             trap.get_latest_update_time()
     
+    @pytest.mark.skip(reason="Method convert_to_utc was removed in refactoring")
     @patch('app.actions.rmwhub.types.parse_date')
     def test_convert_to_utc_parse_failure(self, mock_parse_date):
         """Test convert_to_utc when parsing fails."""
@@ -331,6 +323,7 @@ class TestTrap:
         with pytest.raises(AttributeError):
             Trap.convert_to_utc("invalid_date")
     
+    @pytest.mark.skip(reason="Method convert_to_utc was removed in refactoring")
     @patch('app.actions.rmwhub.types.parse_date')
     def test_convert_to_utc_value_error_branch(self, mock_parse_date):
         """Test convert_to_utc ValueError branch - though this may be unreachable."""
@@ -524,6 +517,7 @@ class TestGearSet:
                 when_updated_utc="2023-09-15T19:00:00Z"
             )
     
+    @pytest.mark.skip(reason="Method build_observation_for_specific_trap was removed in refactoring")
     @pytest.mark.asyncio
     async def test_build_observation_for_specific_trap_empty_traps(self):
         """Test build_observation_for_specific_trap with empty traps list."""
@@ -539,6 +533,7 @@ class TestGearSet:
         observations = await gearset.build_observation_for_specific_trap("trap_001")
         assert observations == []
     
+    @pytest.mark.skip(reason="Method build_observation_for_specific_trap was removed in refactoring")
     @pytest.mark.asyncio
     async def test_build_observation_for_specific_trap_deployed_trap(self):
         """Test build_observation_for_specific_trap with deployed trap."""
@@ -576,6 +571,7 @@ class TestGearSet:
         assert obs["source"] == "trap_deployed"
         assert obs["additional"]["event_type"] == "trap_deployed"
     
+    @pytest.mark.skip(reason="Method build_observation_for_specific_trap was removed in refactoring")
     @pytest.mark.asyncio
     async def test_build_observation_for_specific_trap_retrieved_trap(self):
         """Test build_observation_for_specific_trap with retrieved trap."""
@@ -614,6 +610,7 @@ class TestGearSet:
         assert obs["source"] == "trap_retrieved"
         assert obs["additional"]["event_type"] == "trap_retrieved"
     
+    @pytest.mark.skip(reason="Method build_observation_for_specific_trap was removed in refactoring")
     @pytest.mark.asyncio
     async def test_build_observation_for_specific_trap_no_match(self, sample_trap_data_list):
         """Test build_observation_for_specific_trap with no matching trap ID."""
@@ -632,6 +629,7 @@ class TestGearSet:
         
         assert observations == []
     
+    @pytest.mark.skip(reason="Method build_observation_for_specific_trap was removed in refactoring")
     @pytest.mark.asyncio
     async def test_build_observation_for_specific_trap_unknown_status(self):
         """Test build_observation_for_specific_trap with unknown trap status."""
@@ -662,6 +660,7 @@ class TestGearSet:
             with pytest.raises(ValueError, match="Unknown trap status: unknown_status"):
                 await gearset.build_observation_for_specific_trap("trap_unknown")
     
+    @pytest.mark.skip(reason="Method convert_to_utc was removed in refactoring")
     def test_convert_to_utc_with_datetime_object(self):
         """Test convert_to_utc when passed a datetime object instead of string."""
         dt_obj = datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone.utc)

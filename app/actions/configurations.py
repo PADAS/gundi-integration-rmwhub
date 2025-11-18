@@ -14,6 +14,12 @@ class AuthenticateConfig(AuthActionConfiguration, ExecutableActionMixin):
         description="API key used to read/write data from rmwHUB services.",
         format="password",
     )
+    er_token: pydantic.SecretStr = pydantic.Field(
+        ...,
+        title="EarthRanger API Token",
+        description="API token used to authenticate with EarthRanger Gear API.",
+        format="password",
+    )
 
 
 class PullRmwHubObservationsConfiguration(PullActionConfiguration):

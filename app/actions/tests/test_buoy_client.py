@@ -36,7 +36,7 @@ class TestBuoyClient:
             "manufacturer": "Test Manufacturer",
             "devices": [
                 {
-                    "device_id": "DEV001",
+                    "device_id": "100a5ed3-e26c-4904-8a6a-f9cd57343a37",
                     "label": "Device 1",
                     "location": {
                         "latitude": 45.0,
@@ -46,7 +46,7 @@ class TestBuoyClient:
                     "last_deployed": "2023-09-15T08:00:00"
                 },
                 {
-                    "device_id": "DEV002",
+                    "device_id": "2962e425-fcf8-4506-bd9f-672943c29196",
                     "label": "Device 2",
                     "location": {
                         "latitude": 46.0,
@@ -151,7 +151,7 @@ class TestBuoyClient:
         
         # Check first device
         device1 = gear.devices[0]
-        assert device1.device_id == "DEV001"
+        assert device1.device_id == "100a5ed3-e26c-4904-8a6a-f9cd57343a37"
         assert device1.label == "Device 1"
         assert device1.location.latitude == 45.0
         assert device1.location.longitude == -120.0
@@ -159,7 +159,7 @@ class TestBuoyClient:
         
         # Check second device (no last_deployed)
         device2 = gear.devices[1]
-        assert device2.device_id == "DEV002"
+        assert device2.device_id == "2962e425-fcf8-4506-bd9f-672943c29196"
         assert device2.last_deployed is None
     
     def test_parse_gear_minimal_data(self, client):
@@ -428,7 +428,7 @@ class TestBuoyClient:
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",
             "devices": [{
-                "device_id": "DEV001",
+                "device_id": "07a3e45b-b8b5-45ca-a19e-155b85ef6591",
                 "label": "Device 1",
                 "location": {"latitude": 45.0, "longitude": -120.0},
                 "last_updated": "2023-10-01T12:00:00"
@@ -446,7 +446,7 @@ class TestBuoyClient:
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",
             "devices": [{
-                "device_id": "DEV001",
+                "device_id": "8ab2da67-1808-438f-a138-9a108bd40d14",
                 "label": "Device 1",
                 "location": {},  # Empty location
                 "last_updated": "2023-10-01T12:00:00"
@@ -624,26 +624,26 @@ class TestBuoyClient:
             assert len(gears) == 0
             assert isinstance(gears, list)
 
-    def test_parse_gear_device_with_missing_source_id(self, client):
-        """Test parsing device data without source_id field."""
+    def test_parse_gear_device_defaults_mfr_device_id_to_empty_string(self, client):
+        """Test that missing mfr_device_id defaults to empty string when parsing device data."""        
         data = {
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",
             "devices": [{
-                "device_id": "DEV001",
+                "device_id": "d5a95ce7-a7f5-4afc-87fe-b6f7e3d6e063",
                 "label": "Device 1",
                 "location": {"latitude": 45.0, "longitude": -120.0},
                 "last_updated": "2023-10-01T12:00:00"
-                # source_id is missing, should default to empty string
+                # mfr_device_id is missing, should default to empty string
             }]
         }
         
         gear = client._parse_gear(data)
         assert len(gear.devices) == 1
-        assert gear.devices[0].source_id == ""  # Should default to empty string
+        assert gear.devices[0].mfr_device_id == ""  # Should default to empty string
 
-    def test_parse_gear_with_missing_manufacturer(self, client):
-        """Test parsing gear data without manufacturer field."""
+    def test_parse_gear_device_defaults_mfr_device_id_to_empty_string(self, client):
+        """Test that missing mfr_device_id defaults to empty string when parsing device data."""
         data = {
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",
@@ -660,7 +660,7 @@ class TestBuoyClient:
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",
             "devices": [{
-                "device_id": "DEV001",
+                "device_id": "d84b5add-0764-48c1-94d4-59a6abb60bfd",
                 "label": "Device 1",
                 "location": {"latitude": 45.0, "longitude": -120.0},
                 "last_updated": "2023-10-01T12:00:00",

@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, AsyncIterator
+from typing import List, Optional, Tuple, AsyncIterator, Dict, Any
 
 import hashlib
 import json
@@ -13,10 +13,21 @@ from app.services.activity_logger import log_action_activity
 from ..buoy.client import BuoyClient
 from ..buoy.types import BuoyGear
 from .client import RmwHubClient
-from .types import GearSet, Trap, SOURCE_TYPE
+from .types import GearSet, Trap
 
 logger = logging.getLogger(__name__)
 
+# Manufacturer string used to identify RMW Hub gears. Put in a constant so
+# we don't duplicate the literal throughout the file.
+RMWHUB_MANUFACTURER = "rmwhub"
+
+
+def is_valid_uuid(uuid_string):
+    try:
+        uuid.UUID(str(uuid_string))
+        return True
+    except ValueError:
+        return False
 
 class RmwHubAdapter:
     def __init__(
@@ -120,28 +131,36 @@ class RmwHubAdapter:
 
         return gearsets
 
-    async def process_download(self, rmw_sets: List[GearSet]) -> List:
+    async def process_download(self, rmw_sets: List[GearSet]) -> List[Dict[str, Any]]:
         """
-        Process the sets from the RMW Hub API.
+        Process the sets from the RMW Hub API and convert them to gear payloads.
+        Returns a list of gear payloads ready to be sent to the Buoy API.
         """
         gears = await self.gear_client.get_all_gears()
 
         trap_id_to_gear_mapping = {
-            device.device_id: gear
+            device.mfr_device_id: gear
             for gear in gears
             for device in gear.devices
-            if device.source_id
         }
 
-        observations = []
+        gear_payloads = []
         skipped_retrieved_traps_missing_in_er = []
         matched_status_traps = []
+        
         for gearset in rmw_sets:
+            # Group traps by their deployment/haul status
+            traps_to_deploy = []
+            traps_to_haul = []
+            if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
+                logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs.")
+                continue
+            
             for trap in gearset.traps:
                 er_gear = trap_id_to_gear_mapping.get(trap.id)
 
                 if er_gear and er_gear.display_id != gearset.id:
-                    continue # That trap is deployed in multiple gears/sets, and that's not the correct one
+                    continue  # That trap is deployed in multiple gears/sets, and that's not the correct one
 
                 if not er_gear and trap.status == "retrieved":
                     skipped_retrieved_traps_missing_in_er.append(trap.id)
@@ -152,12 +171,115 @@ class RmwHubAdapter:
                        (trap.status == "retrieved" and er_gear.status == "hauled"):
                         matched_status_traps.append(trap.id)
                         continue
-
-                trap_observation = await gearset.build_observation_for_specific_trap(trap.id)
-                observations.extend(trap_observation)
+                
+                # Separate traps by status
+                if trap.status == "deployed":
+                    traps_to_deploy.append(trap)
+                elif trap.status == "retrieved":
+                    traps_to_haul.append(trap)
+            
+            # Create gear payloads for deployment
+            if traps_to_deploy:
+                payload = self._create_gear_payload_from_gearset(
+                    gearset,
+                    traps_to_deploy,
+                    device_status="deployed"
+                )
+                gear_payloads.append(payload)
+            
+            # Create gear payloads for hauling
+            if traps_to_haul:
+                payload = self._create_gear_payload_from_gearset(
+                    gearset,
+                    traps_to_haul,
+                    device_status="hauled"
+                )
+                gear_payloads.append(payload)
+        
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
         logger.info(f"Skipped matching {len(matched_status_traps)} traps with same status in EarthRanger: {matched_status_traps}")
-        return observations
+        logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
+        
+        return gear_payloads
+
+    def _create_gear_payload_from_gearset(
+        self,
+        gearset: GearSet,
+        traps: List[Trap],
+        device_status: str
+    ) -> Dict[str, Any]:
+        """
+        Create a gear payload from a RMW Hub gearset in the format expected by the Buoy API.
+        
+        Args:
+            gearset: The RMW Hub gear set
+            traps: List of traps to include in this payload
+            device_status: Status of the devices (deployed/hauled)
+        
+        Returns:
+            Dict in the format expected by /api/v1.0/gear/ POST endpoint
+        """
+        devices = []
+
+        for trap in traps:
+            # Get the appropriate timestamp based on status
+            if device_status == "deployed":
+                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
+                last_updated = last_deployed
+            else:  # hauled
+                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
+                last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+
+            device = {
+                "device_id": trap.id,
+                "last_deployed": last_deployed,
+                "last_updated": last_updated,
+                "device_status": device_status,
+                "location": {
+                    "latitude": trap.latitude,
+                    "longitude": trap.longitude,
+                },
+                "device_additional_data": json.loads(json.dumps(trap.json(), default=str))
+            }
+            if trap.release_type and trap.release_type != "none":
+                device["release_type"] = trap.release_type 
+            devices.append(device)
+        
+        # Determine deployment type
+        deployment_type = gearset.deployment_type or ("trawl" if len(devices) > 1 else "single")
+        
+        # Build payload
+        payload = {
+            "deployment_type": deployment_type,
+            "set_id": gearset.id,
+            "devices_in_set": len(devices),
+            "devices": devices,
+        }
+        
+        # Add initial_deployment_date only for new deployments
+        if device_status == "deployed" and traps:
+            # Use the earliest deployment time from the traps
+            deployment_times = [trap.deploy_datetime_utc for trap in traps if trap.deploy_datetime_utc]
+            if deployment_times:
+                earliest_deployment = min(deployment_times)
+            else:
+                earliest_deployment = None
+            if earliest_deployment:
+                payload["initial_deployment_date"] = earliest_deployment
+        
+        return payload
+
+    async def send_gear_to_buoy_api(self, gear_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send gear payload to the Buoy API POST endpoint.
+
+        Args:
+            gear_payload: The gear payload in the format expected by /api/v1.0/gear/
+
+        Returns:
+            Dict containing the API response
+        """
+        return await self.gear_client.send_gear_to_buoy_api(gear_payload)
 
 
     async def iter_er_gears(self, start_datetime: datetime = None, state: str = None) -> AsyncIterator[BuoyGear]:
@@ -207,7 +329,7 @@ class RmwHubAdapter:
 
             # Stream gears and process them one by one
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="hauled"):
-                if er_gear.manufacturer == "rmwhub":
+                if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
                     continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
@@ -309,6 +431,11 @@ class RmwHubAdapter:
     def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -> str:
         if manufacturer.lower() == "edgetech":
             return device_id.split("_")[0]
+        try:
+            uuid_obj = uuid.UUID(device_id)
+            return uuid_obj.hex
+        except ValueError:
+            pass
         return device_id
 
     async def _create_rmw_update_from_er_gear(
@@ -318,7 +445,7 @@ class RmwHubAdapter:
         """
         Create an RMW update from an EarthRanger gear.
         """
-        if er_gear.manufacturer == "rmwhub":
+        if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
         for i, device in enumerate(er_gear.devices):
@@ -327,7 +454,7 @@ class RmwHubAdapter:
                 continue
             traps.append(
                 Trap(
-                    id=device.source_id,
+                    id=uuid.UUID(device.device_id).hex,
                     sequence=i + 1,
                     latitude=device.location.latitude,
                     longitude=device.location.longitude,
@@ -338,7 +465,7 @@ class RmwHubAdapter:
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
                     is_on_end=i == len(er_gear.devices) - 1,
                     manufacturer=er_gear.manufacturer,
-                    serial_number=self._get_serial_number_from_device_id(device.device_id, er_gear.manufacturer)
+                    serial_number=self._get_serial_number_from_device_id(device.mfr_device_id, er_gear.manufacturer)
                 )
             )
         if not traps:
@@ -358,7 +485,7 @@ class RmwHubAdapter:
         """
         mapping = {}
         for gear in er_gears:
-            if gear.manufacturer == "rmwhub":
+            if gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
                 continue  # Skip RMW Hub gears to avoid uploading their own data
             additional_data = gear.additional or {}
             display_id = additional_data.get("display_id")
