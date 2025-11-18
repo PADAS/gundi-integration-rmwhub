@@ -9,11 +9,11 @@ from gundi_core.schemas.v2 import Integration
 
 from app.services.action_scheduler import crontab_schedule
 from app.services.activity_logger import activity_logger, log_action_activity
+from app.services.utils import find_config_for_action
 
 from .configurations import AuthenticateConfig, PullRmwHubObservationsConfiguration
 from .rmwhub import RmwHubAdapter
 from .buoy.types import Environment
-from .utils import get_er_token_and_site
 
 logger = logging.getLogger(__name__)
 
@@ -151,11 +151,21 @@ async def action_pull_observations(
     _client = GundiClient()
     connection_details = await _client.get_connection_details(integration.id)
     
+    # Get the auth config from the integration (not from action_config)
+    auth_config_data = find_config_for_action(
+        configurations=integration.configurations, action_id="auth"
+    )
+    auth_config = AuthenticateConfig.parse_obj(auth_config_data.data)
+    er_token = auth_config.er_token.get_secret_value()
+    
     total_gear_payloads = 0
     num_sets_updated = 0
     for destination in connection_details.destinations:
         environment = Environment(destination.name)
-        er_token, er_destination = await get_er_token_and_site(integration, environment)
+        
+        # Get destination base URL
+        destination_details = await _client.get_integration_details(destination.id)
+        er_destination = destination_details.base_url
 
         logger.info(
             f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."
@@ -193,11 +203,21 @@ async def action_pull_observations_24_hour_sync(
     _client = GundiClient()
     connection_details = await _client.get_connection_details(integration.id)
     
+    # Get the auth config from the integration (not from action_config)
+    auth_config_data = find_config_for_action(
+        configurations=integration.configurations, action_id="auth"
+    )
+    auth_config = AuthenticateConfig.parse_obj(auth_config_data.data)
+    er_token = auth_config.er_token.get_secret_value()
+    
     total_gear_payloads = 0
     num_sets_updated = 0
     for destination in connection_details.destinations:
         environment = Environment(destination.name)
-        er_token, er_destination = await get_er_token_and_site(integration, environment)
+        
+        # Get destination base URL
+        destination_details = await _client.get_integration_details(destination.id)
+        er_destination = destination_details.base_url
 
         logger.info(
             f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."

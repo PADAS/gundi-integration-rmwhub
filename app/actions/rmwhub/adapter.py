@@ -3,10 +3,10 @@ from typing import List, Optional, Tuple, AsyncIterator, Dict, Any
 import hashlib
 import json
 import logging
+import uu
 import uuid
 from datetime import datetime
 
-import aiohttp
 import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
 from erclient import ERClient
@@ -18,6 +18,13 @@ from .types import GearSet, Trap
 
 logger = logging.getLogger(__name__)
 
+
+def is_valid_uuid(uuid_string):
+    try:
+        uuid.UUID(str(uuid_string))
+        return True
+    except ValueError:
+        return False
 
 class RmwHubAdapter:
     def __init__(
@@ -129,10 +136,9 @@ class RmwHubAdapter:
         gears = await self.gear_client.get_all_gears()
 
         trap_id_to_gear_mapping = {
-            device.device_id: gear
+            device.mfr_device_id: gear
             for gear in gears
             for device in gear.devices
-            if device.source_id
         }
 
         gear_payloads = []
@@ -143,6 +149,9 @@ class RmwHubAdapter:
             # Group traps by their deployment/haul status
             traps_to_deploy = []
             traps_to_haul = []
+            if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
+                logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs.")
+                continue
             
             for trap in gearset.traps:
                 er_gear = trap_id_to_gear_mapping.get(trap.id)
@@ -219,25 +228,18 @@ class RmwHubAdapter:
                 last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
             
             device = {
-                "mfr_device_id": trap.id,
-                "mfr_id": "rmwhub",
+                "device_id": trap.id,
                 "last_deployed": last_deployed,
                 "last_updated": last_updated,
                 "device_status": device_status,
-                "positioning_type": "gps",
-                "release_type": trap.release_type or "acoustic",
                 "location": {
                     "latitude": trap.latitude,
                     "longitude": trap.longitude,
                 },
-                "device_additional_data": {
-                    "sequence": trap.sequence,
-                    "accuracy": trap.accuracy,
-                    "is_on_end": trap.is_on_end,
-                    "manufacturer": trap.manufacturer,
-                    "serial_number": trap.serial_number,
-                }
+                "device_additional_data": json.loads(json.dumps(trap.json(), default=str))
             }
+            if trap.release_type and trap.release_type != "none":
+                device["release_type"] = trap.release_type 
             devices.append(device)
         
         # Determine deployment type
@@ -245,10 +247,8 @@ class RmwHubAdapter:
         
         # Build payload
         payload = {
-            "owner_id": gearset.vessel_id or "rmwhub",
             "deployment_type": deployment_type,
             "set_id": gearset.id,
-            "set_display_id": gearset.id,
             "devices_in_set": len(devices),
             "devices": devices,
         }
@@ -262,12 +262,6 @@ class RmwHubAdapter:
             if earliest_deployment:
                 payload["initial_deployment_date"] = earliest_deployment
         
-        # Add additional metadata
-        if gearset.trawl_path:
-            payload["set_additional_data"] = {
-                "trawl_path": gearset.trawl_path
-            }
-        
         return payload
 
     async def send_gear_to_buoy_api(self, gear_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -275,32 +269,12 @@ class RmwHubAdapter:
         Send gear payload to the Buoy API POST endpoint.
 
         Args:
-            gear_payload: The gear payload in the format expected by /api/v2/gears/
+            gear_payload: The gear payload in the format expected by /api/v1.0/gears/
 
         Returns:
             Dict containing the API response
         """
-        url = f"{self.gear_client.er_site}api/v1/gears/"
-        headers = {
-            "Authorization": f"Bearer {self.gear_client.er_token}",
-            "Content-Type": "application/json",
-        }
-
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(url, json=gear_payload, headers=headers) as response:
-                    response_text = await response.text()
-                    if response.status in [200, 201]:
-                        logger.info(f"Successfully sent gear set to Buoy API: {response.status}")
-                        return {"status": "success", "status_code": response.status, "response": response_text}
-                    else:
-                        logger.error(
-                            f"Failed to send gear set to Buoy API. Status: {response.status}, Response: {response_text}"
-                        )
-                        return {"status": "error", "status_code": response.status, "response": response_text}
-            except Exception as e:
-                logger.exception(f"Exception while sending gear to Buoy API: {e}")
-                return {"status": "error", "error": str(e)}
+        return await self.gear_client.send_gear_to_buoy_api(gear_payload)
 
 
     async def iter_er_gears(self, start_datetime: datetime = None, state: str = None) -> AsyncIterator[BuoyGear]:
@@ -350,7 +324,7 @@ class RmwHubAdapter:
 
             # Stream gears and process them one by one
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="hauled"):
-                if er_gear.manufacturer == "rmwhub":
+                if er_gear.manufacturer.lower() == "rmwhub":
                     continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
@@ -452,6 +426,11 @@ class RmwHubAdapter:
     def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -> str:
         if manufacturer.lower() == "edgetech":
             return device_id.split("_")[0]
+        try:
+            uuid_obj = uuid.UUID(device_id)
+            return uuid_obj.hex
+        except ValueError:
+            pass
         return device_id
 
     async def _create_rmw_update_from_er_gear(
@@ -461,7 +440,7 @@ class RmwHubAdapter:
         """
         Create an RMW update from an EarthRanger gear.
         """
-        if er_gear.manufacturer == "rmwhub":
+        if er_gear.manufacturer.lower() == "rmwhub":
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
         for i, device in enumerate(er_gear.devices):
@@ -470,7 +449,7 @@ class RmwHubAdapter:
                 continue
             traps.append(
                 Trap(
-                    id=device.source_id,
+                    id=uuid.UUID(device.device_id).hex,
                     sequence=i + 1,
                     latitude=device.location.latitude,
                     longitude=device.location.longitude,
@@ -481,7 +460,7 @@ class RmwHubAdapter:
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
                     is_on_end=i == len(er_gear.devices) - 1,
                     manufacturer=er_gear.manufacturer,
-                    serial_number=self._get_serial_number_from_device_id(device.device_id, er_gear.manufacturer)
+                    serial_number=self._get_serial_number_from_device_id(device.mfr_device_id, er_gear.manufacturer)
                 )
             )
         if not traps:
@@ -501,7 +480,7 @@ class RmwHubAdapter:
         """
         mapping = {}
         for gear in er_gears:
-            if gear.manufacturer == "rmwhub":
+            if gear.manufacturer.lower() == "rmwhub":
                 continue  # Skip RMW Hub gears to avoid uploading their own data
             additional_data = gear.additional or {}
             display_id = additional_data.get("display_id")
