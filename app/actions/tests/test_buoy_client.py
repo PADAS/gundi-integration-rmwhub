@@ -642,8 +642,8 @@ class TestBuoyClient:
         assert len(gear.devices) == 1
         assert gear.devices[0].mfr_device_id == ""  # Should default to empty string
 
-    def test_parse_gear_with_missing_manufacturer(self, client):
-        """Test parsing gear data without manufacturer field."""
+    def test_parse_gear_device_defaults_mfr_device_id_to_empty_string(self, client):
+        """Test that missing mfr_device_id defaults to empty string when parsing device data."""
         data = {
             "id": "12345678-1234-1234-1234-123456789012",
             "display_id": "GEAR001",

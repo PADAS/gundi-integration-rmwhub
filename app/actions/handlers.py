@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import Dict, List
 
 from gundi_client_v2 import GundiClient
 from gundi_core.events import LogLevel
@@ -12,7 +12,7 @@ from app.services.utils import find_config_for_action
 
 from .configurations import AuthenticateConfig, PullRmwHubObservationsConfiguration
 from .rmwhub import RmwHubAdapter
-from .buoy.types import Environment
+from .buoy.types import Dict, Environment
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ async def handle_download(
     integration: Integration,
     environment: Environment,
     action_config: PullRmwHubObservationsConfiguration
-) -> int:
+) -> Dict:
     logger.info(
         f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )

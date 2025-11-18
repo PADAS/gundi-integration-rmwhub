@@ -204,34 +204,32 @@ class BuoyClient:
             manufacturer=data.get("manufacturer", "")
         )
 
-    async def send_gear_to_buoy_api(self, gear_payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def send_gear_to_buoy_api(self, gear_payload: Dict[str, Any], timeout: Optional[httpx.Timeout] = None) -> Dict[str, Any]:
         """
-        Send gear payload to the Buoy API POST endpoint.
+        Send gear payload to the Buoy API POST endpoint using httpx.
 
         Args:
             gear_payload: The gear payload in the format expected by /api/v1.0/gear/
+            timeout: Optional timeout settings (overrides defaults)
 
         Returns:
             Dict containing the API response
         """
         url = urljoin(self.er_site, "gear/")
-        headers = {
-            "Authorization": f"Bearer {self.er_token}",
-            "Content-Type": "application/json",
-        }
+        client_timeout = timeout or self.default_timeout
 
-        async with aiohttp.ClientSession() as session:
+        async with httpx.AsyncClient(timeout=client_timeout) as client:
             try:
-                async with session.post(url, json=gear_payload, headers=headers) as response:
-                    response_text = await response.text()
-                    if response.status in [200, 201]:
-                        logger.info(f"Successfully sent gear set to Buoy API: {response.status}")
-                        return {"status": "success", "status_code": response.status, "response": response_text}
-                    else:
-                        logger.error(
-                            f"Failed to send gear set to Buoy API. Status: {response.status}, Response: {response_text}"
-                        )
-                        return {"status": "error", "status_code": response.status, "response": response_text}
-            except Exception as e:
-                logger.exception(f"Exception while sending gear to Buoy API")
+                response = await client.post(url, json=gear_payload, headers=self.headers)
+                response_text = response.text
+                if response.status_code in (200, 201):
+                    logger.info(f"Successfully sent gear set to Buoy API: {response.status_code}")
+                    return {"status": "success", "status_code": response.status_code, "response": response_text}
+                else:
+                    logger.error(
+                        f"Failed to send gear set to Buoy API. Status: {response.status_code}, Response: {response_text}"
+                    )
+                    return {"status": "error", "status_code": response.status_code, "response": response_text}
+            except httpx.HTTPError as e:
+                logger.exception("Exception while sending gear to Buoy API")
                 return {"status": "error", "error": str(e)}
