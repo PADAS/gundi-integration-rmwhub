@@ -17,6 +17,10 @@ from .types import GearSet, Trap
 
 logger = logging.getLogger(__name__)
 
+# Manufacturer string used to identify RMW Hub gears. Put in a constant so
+# we don't duplicate the literal throughout the file.
+RMWHUB_MANUFACTURER = "rmwhub"
+
 
 def is_valid_uuid(uuid_string):
     try:
@@ -216,7 +220,7 @@ class RmwHubAdapter:
             Dict in the format expected by /api/v1.0/gear/ POST endpoint
         """
         devices = []
-        
+
         for trap in traps:
             # Get the appropriate timestamp based on status
             if device_status == "deployed":
@@ -225,7 +229,7 @@ class RmwHubAdapter:
             else:  # hauled
                 last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
                 last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
-            
+
             device = {
                 "device_id": trap.id,
                 "last_deployed": last_deployed,
@@ -325,7 +329,7 @@ class RmwHubAdapter:
 
             # Stream gears and process them one by one
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="hauled"):
-                if er_gear.manufacturer.lower() == "rmwhub":
+                if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
                     continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
@@ -441,7 +445,7 @@ class RmwHubAdapter:
         """
         Create an RMW update from an EarthRanger gear.
         """
-        if er_gear.manufacturer.lower() == "rmwhub":
+        if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
         for i, device in enumerate(er_gear.devices):
@@ -481,7 +485,7 @@ class RmwHubAdapter:
         """
         mapping = {}
         for gear in er_gears:
-            if gear.manufacturer.lower() == "rmwhub":
+            if gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
                 continue  # Skip RMW Hub gears to avoid uploading their own data
             additional_data = gear.additional or {}
             display_id = additional_data.get("display_id")

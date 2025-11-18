@@ -115,10 +115,6 @@ async def handle_download(
             "success": success_count,
             "failures": failure_count,
             "gear_sets_extracted": len(rmw_sets),
-        } if failure_count > 0 else {
-            "total": len(gear_payloads),
-            "success": success_count,
-            "gear_sets_extracted": len(rmw_sets),
         },
         config_data=action_config.dict(),
     )
