@@ -209,7 +209,7 @@ class BuoyClient:
         Send gear payload to the Buoy API POST endpoint.
 
         Args:
-            gear_payload: The gear payload in the format expected by /api/v1.0/gears/
+            gear_payload: The gear payload in the format expected by /api/v1.0/gear/
 
         Returns:
             Dict containing the API response
@@ -233,5 +233,5 @@ class BuoyClient:
                         )
                         return {"status": "error", "status_code": response.status, "response": response_text}
             except Exception as e:
-                logger.exception(f"Exception while sending gear to Buoy API: {e}")
+                logger.exception(f"Exception while sending gear to Buoy API")
                 return {"status": "error", "error": str(e)}

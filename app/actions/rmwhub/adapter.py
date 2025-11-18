@@ -214,7 +214,7 @@ class RmwHubAdapter:
             device_status: Status of the devices (deployed/hauled)
         
         Returns:
-            Dict in the format expected by /api/v2/gears/ POST endpoint
+            Dict in the format expected by /api/v1.0/gear/ POST endpoint
         """
         devices = []
         
@@ -269,7 +269,7 @@ class RmwHubAdapter:
         Send gear payload to the Buoy API POST endpoint.
 
         Args:
-            gear_payload: The gear payload in the format expected by /api/v1.0/gears/
+            gear_payload: The gear payload in the format expected by /api/v1.0/gear/
 
         Returns:
             Dict containing the API response
