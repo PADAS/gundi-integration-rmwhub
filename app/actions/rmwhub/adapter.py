@@ -322,6 +322,11 @@ class RmwHubAdapter:
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
         for i, device in enumerate(er_gear.devices):
+            # Smelts device are being generated from the post-processor and don't have last_deployed set
+            # Until they move to the new POST API, we will the last_updated as last_deployed
+            if er_gear.manufacturer.lower() == "smelts" and not device.last_deployed:
+                device.last_deployed = device.last_updated
+
             if not device.last_deployed:
                 logger.info(f"Skipping device {device.device_id} in gear {er_gear.name} due to missing last_deployed")
                 continue
