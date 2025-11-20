@@ -454,7 +454,7 @@ class RmwHubAdapter:
                 continue
             traps.append(
                 Trap(
-                    id=uuid.UUID(device.device_id).hex,
+                    id=str(device.device_id),
                     sequence=i + 1,
                     latitude=device.location.latitude,
                     longitude=device.location.longitude,
