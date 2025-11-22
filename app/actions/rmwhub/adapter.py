@@ -333,10 +333,12 @@ class RmwHubAdapter:
                     continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
+                    logger.info('[hauled] Creating RMW update from EarthRanger gear: %s', er_gear.name)
+                    logger.info('[hauled] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)
-                        logger.info(f"Processed gear {er_gear.name}")
+                        logger.info(f"[hauled] Processed gear {er_gear.name}")
                 except Exception as e:
                     logger.error(f"Error processing gear {er_gear.name}: {e}")
                     errors.append((f"Error processing gear {er_gear.name}", e))
@@ -344,10 +346,13 @@ class RmwHubAdapter:
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="deployed"):
                 gear_count += 1
                 try:
+                    logger.info('[deployed] Creating RMW update from EarthRanger gear: %s', er_gear.name)
+                    logger.info('[deployed] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)
-                        logger.info(f"Processed gear {er_gear.name}")
+                        logger.info(f"[deployed] Processed gear {er_gear.name}")
+                        
                 except Exception as e:
                     logger.error(f"Error processing gear {er_gear.name}: {e}")
                     errors.append((f"Error processing gear {er_gear.name}", e))
@@ -451,8 +456,6 @@ class RmwHubAdapter:
         """
         Create an RMW update from an EarthRanger gear.
         """
-        logger.info('Creating RMW update from EarthRanger gear: %s', er_gear.name)
-        logger.info('Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
         if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
