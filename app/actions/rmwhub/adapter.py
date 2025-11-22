@@ -429,14 +429,20 @@ class RmwHubAdapter:
             return 0, []
 
     def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -> str:
+        """
+        Convert device_id to a serial number format acceptable by RMW Hub API.
+        Maximum length is 32 characters.
+        """
         if manufacturer.lower() == "edgetech":
             return device_id.split("_")[0]
         try:
             uuid_obj = uuid.UUID(device_id)
+            # Return hex format (32 characters, no dashes)
             return uuid_obj.hex
         except ValueError:
             pass
-        return device_id
+        # If not a UUID, truncate to 32 characters if needed
+        return device_id[:32] if len(device_id) > 32 else device_id
 
     async def _create_rmw_update_from_er_gear(
         self,
@@ -445,6 +451,8 @@ class RmwHubAdapter:
         """
         Create an RMW update from an EarthRanger gear.
         """
+        logger.info('Creating RMW update from EarthRanger gear: %s', er_gear.name)
+        logger.info('Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
         if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
             return None  # Skip RMW Hub gears to avoid uploading their own data
         traps = []
