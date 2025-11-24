@@ -1,15 +1,15 @@
-from typing import List, Optional, Tuple, AsyncIterator, Dict, Any
-
 import hashlib
 import json
 import logging
 import uuid
 from datetime import datetime
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
-from erclient import ERClient
+
 from app.services.activity_logger import log_action_activity
+
 from ..buoy.client import BuoyClient
 from ..buoy.types import BuoyGear
 from .client import RmwHubClient
@@ -481,7 +481,7 @@ class RmwHubAdapter:
                     deploy_datetime_utc=device.last_deployed.isoformat(),
                     surface_datetime_utc=None,
                     accuracy="gps",
-                    retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status == "retrieved" else None,
+                    retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status != "deployed" else None,
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
                     is_on_end=i == len(er_gear.devices) - 1,
                     manufacturer=er_gear.manufacturer,
