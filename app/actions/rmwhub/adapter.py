@@ -251,6 +251,7 @@ class RmwHubAdapter:
         # Build payload
         payload = {
             "deployment_type": deployment_type,
+            "manufacturer_name": "RMWHub",
             "set_id": gearset.id,
             "devices_in_set": len(devices),
             "devices": devices,
