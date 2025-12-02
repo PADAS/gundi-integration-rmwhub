@@ -78,7 +78,6 @@ async def handle_download(
         f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmw_sets)}"
     )
     gear_payloads = await rmw_adapter.process_download(rmw_sets)
-    logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
     
     # Send gear payloads directly to Buoy API and track results
     success_count = 0

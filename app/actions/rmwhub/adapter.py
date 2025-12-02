@@ -137,6 +137,7 @@ class RmwHubAdapter:
         Returns a list of gear payloads ready to be sent to the Buoy API.
         """
         gears = await self.gear_client.get_all_gears()
+        logger.info(f"Found existing {len(gears)} in EarthRanger")
 
         trap_id_to_gear_mapping = {
             device.mfr_device_id: gear
@@ -150,6 +151,7 @@ class RmwHubAdapter:
         
         for gearset in rmw_sets:
             # Group traps by their deployment/haul status
+            logger.info(f"Starting processing of Gear set with id {gearset.id}")
             traps_to_deploy = []
             traps_to_haul = []
             if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
@@ -160,15 +162,18 @@ class RmwHubAdapter:
                 er_gear = trap_id_to_gear_mapping.get(trap.id)
 
                 if er_gear and er_gear.display_id != gearset.id:
+                    logger.info(f"Skipping handling of trap ({trap.id}) is deployed in multiple gears/sets, and that's not the correct one")
                     continue  # That trap is deployed in multiple gears/sets, and that's not the correct one
 
                 if not er_gear and trap.status == "retrieved":
+                    logger.info(f"Skipping handling of trap ({trap.id}) since it's retrieved in RMWHub and doesn't exist in EarthRanger yet")
                     skipped_retrieved_traps_missing_in_er.append(trap.id)
                     continue
                 
                 if er_gear:
                     if (trap.status == "deployed" and er_gear.status == "deployed") or \
                        (trap.status == "retrieved" and er_gear.status == "hauled"):
+                        logger.info(f"Skipping handling of trap ({trap.id}) since the trap status match ER Device/Source status")
                         matched_status_traps.append(trap.id)
                         continue
                 
