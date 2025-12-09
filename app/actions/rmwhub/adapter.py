@@ -159,9 +159,9 @@ class RmwHubAdapter:
                 continue
             
             for trap in gearset.traps:
-                er_gear = trap_id_to_gear_mapping.get(trap.id)
+                er_gear = trap_id_to_gear_mapping.get(trap.id.lower())
 
-                if er_gear and er_gear.display_id != gearset.id:
+                if er_gear and er_gear.display_id.lower() != gearset.id.lower():
                     logger.info(f"Skipping handling of trap ({trap.id}) is deployed in multiple gears/sets, and that's not the correct one")
                     continue  # That trap is deployed in multiple gears/sets, and that's not the correct one
 
