@@ -145,6 +145,20 @@ class RmwHubAdapter:
             for device in gear.devices
         }
 
+        # Deduplicate gears by ID (case-insensitive), keeping only the most recent one
+        unique_sets = {}
+        for rmw_set in rmw_sets:
+            set_id_lower = str(rmw_set.id).lower()
+            if set_id_lower not in unique_sets:
+                unique_sets[set_id_lower] = rmw_set
+            else:
+                # Keep the gear with the later last_updated timestamp
+                existing_gear = unique_sets[set_id_lower]
+                if rmw_set.when_updated_utc > existing_gear.when_updated_utc:
+                    unique_sets[set_id_lower] = rmw_set
+        
+        rmw_sets = list(unique_sets.values())
+
         gear_payloads = []
         skipped_retrieved_traps_missing_in_er = []
         matched_status_traps = []
