@@ -72,13 +72,17 @@ async def handle_download(
             },
             config_data=action_config.dict(),
         )
-        return 0
+        return {
+            "total": 0,
+            "success": 0,
+            "failures": 0,
+            "failed_payloads": None,
+        }
 
     logger.info(
         f"Processing updates from RMW Hub API...Number of gearsets returned: {len(rmw_sets)}"
     )
     gear_payloads = await rmw_adapter.process_download(rmw_sets)
-    logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
     
     # Send gear payloads directly to Buoy API and track results
     success_count = 0
@@ -167,9 +171,6 @@ async def action_pull_observations(
     integration, action_config: PullRmwHubObservationsConfiguration
 ):
     current_datetime = datetime.now(timezone.utc)
-    #! Forcing to sync the whole period
-    # TODO: Removing this after figuring out the hauling problem
-    action_config.minutes_to_sync = 90 * 24 * 60  # 90 days in minutes
     sync_interval_minutes = action_config.minutes_to_sync
     start_datetime = current_datetime - timedelta(minutes=sync_interval_minutes)
     end_datetime = current_datetime

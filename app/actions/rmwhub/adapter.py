@@ -1,15 +1,15 @@
-from typing import List, Optional, Tuple, AsyncIterator, Dict, Any
-
 import hashlib
 import json
 import logging
 import uuid
 from datetime import datetime
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
-from erclient import ERClient
+
 from app.services.activity_logger import log_action_activity
+
 from ..buoy.client import BuoyClient
 from ..buoy.types import BuoyGear
 from .client import RmwHubClient
@@ -137,6 +137,7 @@ class RmwHubAdapter:
         Returns a list of gear payloads ready to be sent to the Buoy API.
         """
         gears = await self.gear_client.get_all_gears()
+        logger.info(f"Found existing {len(gears)} in EarthRanger")
 
         trap_id_to_gear_mapping = {
             device.mfr_device_id: gear
@@ -144,12 +145,27 @@ class RmwHubAdapter:
             for device in gear.devices
         }
 
+        # Deduplicate gears by ID (case-insensitive), keeping only the most recent one
+        unique_sets = {}
+        for rmw_set in rmw_sets:
+            set_id_lower = str(rmw_set.id).lower()
+            if set_id_lower not in unique_sets:
+                unique_sets[set_id_lower] = rmw_set
+            else:
+                # Keep the gear with the later last_updated timestamp
+                existing_gear = unique_sets[set_id_lower]
+                if rmw_set.when_updated_utc > existing_gear.when_updated_utc:
+                    unique_sets[set_id_lower] = rmw_set
+        
+        rmw_sets = list(unique_sets.values())
+
         gear_payloads = []
         skipped_retrieved_traps_missing_in_er = []
         matched_status_traps = []
         
         for gearset in rmw_sets:
             # Group traps by their deployment/haul status
+            logger.info(f"Starting processing of Gear set with id {gearset.id}")
             traps_to_deploy = []
             traps_to_haul = []
             if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
@@ -157,18 +173,21 @@ class RmwHubAdapter:
                 continue
             
             for trap in gearset.traps:
-                er_gear = trap_id_to_gear_mapping.get(trap.id)
+                er_gear = trap_id_to_gear_mapping.get(trap.id.lower())
 
-                if er_gear and er_gear.display_id != gearset.id:
+                if er_gear and er_gear.display_id.lower() != gearset.id.lower():
+                    logger.info(f"Skipping handling of trap ({trap.id}) is deployed in multiple gears/sets, and that's not the correct one")
                     continue  # That trap is deployed in multiple gears/sets, and that's not the correct one
 
                 if not er_gear and trap.status == "retrieved":
+                    logger.info(f"Skipping handling of trap ({trap.id}) since it's retrieved in RMWHub and doesn't exist in EarthRanger yet")
                     skipped_retrieved_traps_missing_in_er.append(trap.id)
                     continue
                 
                 if er_gear:
                     if (trap.status == "deployed" and er_gear.status == "deployed") or \
                        (trap.status == "retrieved" and er_gear.status == "hauled"):
+                        logger.info(f"Skipping handling of trap ({trap.id}) since the trap status match ER Device/Source status")
                         matched_status_traps.append(trap.id)
                         continue
                 
@@ -251,6 +270,7 @@ class RmwHubAdapter:
         # Build payload
         payload = {
             "deployment_type": deployment_type,
+            "manufacturer_name": "RMWHub",
             "set_id": gearset.id,
             "devices_in_set": len(devices),
             "devices": devices,
@@ -481,7 +501,7 @@ class RmwHubAdapter:
                     deploy_datetime_utc=device.last_deployed.isoformat(),
                     surface_datetime_utc=None,
                     accuracy="gps",
-                    retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status == "retrieved" else None,
+                    retrieved_datetime_utc=device.last_updated.isoformat() if er_gear.status != "deployed" else None,
                     status="deployed" if er_gear.status == "deployed" else "retrieved",
                     is_on_end=i == len(er_gear.devices) - 1,
                     manufacturer=er_gear.manufacturer,
