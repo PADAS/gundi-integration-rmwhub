@@ -165,7 +165,7 @@ class TestHandleDownload:
         assert log_call2[1]["title"] == "No gearsets returned from RMW Hub API."
         
         # Verify result - now returns 0 instead of empty list
-        assert result == 0
+        assert result["total"] == 0
     
     @pytest.mark.asyncio
     async def test_handle_download_config_dict_called(
