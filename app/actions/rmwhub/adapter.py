@@ -193,8 +193,10 @@ class RmwHubAdapter:
                 
                 # Separate traps by status
                 if trap.status == "deployed":
+                    logger.info(f"Preparing trap ({trap.id}) for deployment")
                     traps_to_deploy.append(trap)
                 elif trap.status == "retrieved":
+                    logger.info(f"Preparing trap ({trap.id}) for hauling")
                     traps_to_haul.append(trap)
             
             # Create gear payloads for deployment
@@ -204,6 +206,7 @@ class RmwHubAdapter:
                     traps_to_deploy,
                     device_status="deployed"
                 )
+                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_to_deploy)} traps: {json.dumps(payload, indent=2, default=str)}")
                 gear_payloads.append(payload)
             
             # Create gear payloads for hauling
@@ -213,12 +216,13 @@ class RmwHubAdapter:
                     traps_to_haul,
                     device_status="hauled"
                 )
+                logger.info(f"Created haul payload for gear set {gearset.id} with {len(traps_to_haul)} traps: {json.dumps(payload, indent=2, default=str)}")
                 gear_payloads.append(payload)
         
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
         logger.info(f"Skipped matching {len(matched_status_traps)} traps with same status in EarthRanger: {matched_status_traps}")
         logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
-        
+        logger.info(f"Gear payloads: {json.dumps(gear_payloads, indent=2, default=str)}")
         return gear_payloads
 
     def _create_gear_payload_from_gearset(
