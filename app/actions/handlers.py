@@ -91,15 +91,16 @@ async def handle_download(
     
     for idx, payload in enumerate(gear_payloads):
         logger.info(f"Sending gear payload {idx + 1}/{len(gear_payloads)} to Buoy API")
+        logger.info(f"Payload: {payload}")
         result = await rmw_adapter.send_gear_to_buoy_api(payload)
         if result.get("status") == "success":
             success_count += 1
-            logger.info(f"Successfully sent gear set {idx + 1}/{len(gear_payloads)} to Buoy API")
+            logger.info(f"Successfully sent gear set ({payload.get('id', 'unknown')}) {idx + 1}/{len(gear_payloads)} to Buoy API")
         else:
             failure_count += 1
             error_info = result.get("error") or result.get("response", "Unknown error")
             logger.error(
-                f"Failed to send gear set {idx + 1}/{len(gear_payloads)} to Buoy API: {error_info}"
+                f"Failed to send gear set ({payload.get('id', 'unknown')}) {idx + 1}/{len(gear_payloads)} to Buoy API: {error_info}"
             )
             failed_payloads.append({"index": idx, "error": error_info})
     

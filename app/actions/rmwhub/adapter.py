@@ -253,6 +253,12 @@ class RmwHubAdapter:
                 last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
                 last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
 
+            # If last_deployed or last_update are timezone naive, assume UTC
+            if "T" in last_deployed and "+" not in last_deployed and "Z" not in last_deployed:
+                last_deployed += "+00:00"
+            if "T" in last_updated and "+" not in last_updated and "Z" not in last_updated:
+                last_updated += "+00:00"
+
             device = {
                 "device_id": trap.id,
                 "last_deployed": last_deployed,
