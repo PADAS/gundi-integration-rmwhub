@@ -295,6 +295,15 @@ class RmwHubAdapter:
             else:
                 earliest_deployment = None
             
+            if earliest_deployment:
+                if isinstance(earliest_deployment, str):
+                    earliest_deployment = earliest_deployment
+                elif isinstance(earliest_deployment, datetime):
+                    earliest_deployment = earliest_deployment.isoformat()
+                else:
+                    earliest_deployment = str(earliest_deployment)
+                
+                
             # If earliest_deployment is timezone naive, assume UTC
             if earliest_deployment and "T" in earliest_deployment and "+" not in earliest_deployment and "Z" not in earliest_deployment:
                 earliest_deployment += "+00:00"
