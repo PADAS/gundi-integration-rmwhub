@@ -294,6 +294,11 @@ class RmwHubAdapter:
                 earliest_deployment = min(deployment_times)
             else:
                 earliest_deployment = None
+            
+            # If earliest_deployment is timezone naive, assume UTC
+            if earliest_deployment and "T" in earliest_deployment and "+" not in earliest_deployment and "Z" not in earliest_deployment:
+                earliest_deployment += "+00:00"
+
             if earliest_deployment:
                 payload["initial_deployment_date"] = earliest_deployment
         
