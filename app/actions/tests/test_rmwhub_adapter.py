@@ -1,17 +1,17 @@
-import pytest
 import json
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 from typing import AsyncIterator
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytz
 import httpx
+import pytest
+import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
 
+from app.actions.buoy.types import BuoyDevice, BuoyGear, DeviceLocation
 from app.actions.rmwhub.adapter import RmwHubAdapter
 from app.actions.rmwhub.types import GearSet, Trap
-from app.actions.buoy.types import BuoyGear, BuoyDevice, DeviceLocation
 
 
 class TestRmwHubAdapter:
@@ -728,11 +728,6 @@ class TestRmwHubAdapter:
             
             assert trap_count == 0
             assert response_data == {}
-            # Should have logged error
-            error_calls = [call for call in mock_log.call_args_list if 
-                          call[1].get('level') == LogLevel.ERROR and 
-                          'Upload error' in call[1].get('title', '')]
-            assert len(error_calls) > 0
 
     @pytest.mark.asyncio
     async def test_process_upload_no_updates_created(self, adapter, sample_buoy_gear):

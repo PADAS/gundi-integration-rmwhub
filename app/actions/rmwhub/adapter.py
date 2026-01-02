@@ -206,7 +206,7 @@ class RmwHubAdapter:
                     traps_to_deploy,
                     device_status="deployed"
                 )
-                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_to_deploy)} traps: {json.dumps(payload, indent=2, default=str)}")
+                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_to_deploy)} traps: {json.dumps(payload, default=str)}")
                 gear_payloads.append(payload)
             
             # Create gear payloads for hauling
@@ -216,13 +216,13 @@ class RmwHubAdapter:
                     traps_to_haul,
                     device_status="hauled"
                 )
-                logger.info(f"Created haul payload for gear set {gearset.id} with {len(traps_to_haul)} traps: {json.dumps(payload, indent=2, default=str)}")
+                logger.info(f"Created haul payload for gear set {gearset.id} with {len(traps_to_haul)} traps: {json.dumps(payload, default=str)}")
                 gear_payloads.append(payload)
         
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
         logger.info(f"Skipped matching {len(matched_status_traps)} traps with same status in EarthRanger: {matched_status_traps}")
         logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
-        logger.info(f"Gear payloads: {json.dumps(gear_payloads, indent=2, default=str)}")
+        logger.info(f"Gear payloads: {json.dumps(gear_payloads, default=str)}")
         return gear_payloads
 
     def _create_gear_payload_from_gearset(
@@ -252,6 +252,12 @@ class RmwHubAdapter:
             else:  # hauled
                 last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
                 last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+
+            # If last_deployed or last_update are timezone naive, assume UTC
+            if "T" in last_deployed and "+" not in last_deployed and "Z" not in last_deployed:
+                last_deployed += "+00:00"
+            if "T" in last_updated and "+" not in last_updated and "Z" not in last_updated:
+                last_updated += "+00:00"
 
             device = {
                 "device_id": trap.id,
@@ -288,6 +294,20 @@ class RmwHubAdapter:
                 earliest_deployment = min(deployment_times)
             else:
                 earliest_deployment = None
+            
+            if earliest_deployment:
+                if isinstance(earliest_deployment, str):
+                    earliest_deployment = earliest_deployment
+                elif isinstance(earliest_deployment, datetime):
+                    earliest_deployment = earliest_deployment.isoformat()
+                else:
+                    earliest_deployment = str(earliest_deployment)
+                
+                
+            # If earliest_deployment is timezone naive, assume UTC
+            if earliest_deployment and "T" in earliest_deployment and "+" not in earliest_deployment and "Z" not in earliest_deployment:
+                earliest_deployment += "+00:00"
+
             if earliest_deployment:
                 payload["initial_deployment_date"] = earliest_deployment
         
@@ -395,55 +415,65 @@ class RmwHubAdapter:
 
             if rmw_updates:
                 try:
-                    # Upload updates to RMW Hub
-                    response = await self.rmw_client.upload_data(rmw_updates)
-
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        result = response_data.get("result", {})
-                        trap_count = result.get("trap_count", 0)
-                        failed_sets = result.get("failed_sets", [])
+                    # Upload updates to RMW Hub in batches of 50
+                    batch_size = 50
+                    total_trap_count = 0
+                    all_failed_sets = []
+                    
+                    for i in range(0, len(rmw_updates), batch_size):
+                        batch = rmw_updates[i:i + batch_size]
+                        batch_num = (i // batch_size) + 1
+                        logger.info(f"Uploading batch {batch_num} with {len(batch)} sets to RMW Hub")
                         
-                        # Log failed sets if any
-                        if failed_sets:
-                            logger.warning(f"Failed to upload {len(failed_sets)} sets: {failed_sets}")
+                        response = await self.rmw_client.upload_data(batch)
+
+                        if response.status_code == 200:
+                            response_data = response.json()
+                            result = response_data.get("result", {})
+                            trap_count = result.get("trap_count", 0)
+                            failed_sets = result.get("failed_sets", [])
+                            
+                            total_trap_count += trap_count
+                            all_failed_sets.extend(failed_sets)
+                            
+                            logger.info(f"Batch {batch_num} uploaded successfully: {trap_count} traps")
+                            
+                            # Log failed sets if any
+                            if failed_sets:
+                                logger.warning(f"Batch {batch_num}: Failed to upload {len(failed_sets)} sets: {failed_sets}")
+                        else:
+                            logger.error(f"Batch {batch_num} upload failed with status {response.status_code}")
                             await log_action_activity(
                                 integration_id=self.integration_uuid,
                                 action_id="pull_observations",
-                                level=LogLevel.WARNING,
-                                title=f"Failed to upload {len(failed_sets)} sets: {failed_sets}",
-                                data={"failed_sets": failed_sets},
+                                level=LogLevel.ERROR,
+                                title=f"Batch {batch_num} upload failed with status {response.status_code}",
+                                data={"upload_task_id": upload_task_id, "rmw_response": response.text, "rmw_sets": batch},
                             )
-                        
-                        logger.info(f"Successfully uploaded {trap_count} traps to RMW Hub")
+                    
+                    # Log summary of all batches
+                    if all_failed_sets:
+                        logger.warning(f"Total failed sets across all batches: {len(all_failed_sets)}: {all_failed_sets}")
                         await log_action_activity(
                             integration_id=self.integration_uuid,
                             action_id="pull_observations",
-                            level=LogLevel.INFO,
-                            title=f"Successfully uploaded {trap_count} traps to RMW Hub",
-                            data={"trap_count": trap_count},
+                            level=LogLevel.WARNING,
+                            title=f"Failed to upload {len(all_failed_sets)} sets across all batches: {all_failed_sets}",
+                            data={"failed_sets": all_failed_sets},
                         )
-
-                        return trap_count, response_data
-                    else:
-                        logger.error(f"Upload failed with status {response.status_code}")
-                        await log_action_activity(
-                            integration_id=self.integration_uuid,
-                            action_id="pull_observations",
-                            level=LogLevel.ERROR,
-                            title=f"Upload failed with status {response.status_code}",
-                            data={"upload_task_id": upload_task_id, "rmw_response": response.text, "rmw_sets": rmw_updates},
-                        )
-                        return 0, {}
-                except Exception as e:
-                    logger.error(f"Upload error: {e}")
+                    
+                    logger.info(f"Successfully uploaded {total_trap_count} traps to RMW Hub across all batches")
                     await log_action_activity(
                         integration_id=self.integration_uuid,
                         action_id="pull_observations",
-                        level=LogLevel.ERROR,
-                        title=f"Upload error: {e}",
-                        data={"upload_task_id": upload_task_id},
+                        level=LogLevel.INFO,
+                        title=f"Successfully uploaded {total_trap_count} traps to RMW Hub",
+                        data={"trap_count": total_trap_count},
                     )
+
+                    return total_trap_count, {"result": {"trap_count": total_trap_count, "failed_sets": all_failed_sets}}
+                except Exception as e:
+                    logger.error(f"Upload error: {e}", exc_info=True, stack_info=True)
                     return 0, {}
 
         except Exception as e:
