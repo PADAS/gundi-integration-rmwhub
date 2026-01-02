@@ -139,10 +139,9 @@ class RmwHubAdapter:
         gears = await self.gear_client.get_all_gears()
         logger.info(f"Found existing {len(gears)} in EarthRanger")
 
-        trap_id_to_gear_mapping = {
-            device.mfr_device_id: gear
+        gear_id_to_set_mapping = {
+            str(gear.id).lower(): gear
             for gear in gears
-            for device in gear.devices
         }
 
         # Deduplicate gears by ID (case-insensitive), keeping only the most recent one
@@ -168,17 +167,12 @@ class RmwHubAdapter:
             logger.info(f"Starting processing of Gear set with id {gearset.id}")
             traps_to_deploy = []
             traps_to_haul = []
+            er_gear = gear_id_to_set_mapping.get(str(gearset.id).lower())
             if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
                 logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs.")
                 continue
             
             for trap in gearset.traps:
-                er_gear = trap_id_to_gear_mapping.get(trap.id.lower())
-
-                if er_gear and er_gear.display_id.lower() != gearset.id.lower():
-                    logger.info(f"Skipping handling of trap ({trap.id}) is deployed in multiple gears/sets, and that's not the correct one")
-                    continue  # That trap is deployed in multiple gears/sets, and that's not the correct one
-
                 if not er_gear and trap.status == "retrieved":
                     logger.info(f"Skipping handling of trap ({trap.id}) since it's retrieved in RMWHub and doesn't exist in EarthRanger yet")
                     skipped_retrieved_traps_missing_in_er.append(trap.id)
