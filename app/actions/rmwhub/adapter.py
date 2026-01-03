@@ -405,7 +405,7 @@ class RmwHubAdapter:
                     level=LogLevel.INFO,
                     title="No gear found in EarthRanger, skipping upload.",
                 )
-                return 0, {}
+                return 0, {"result": {"failed_sets": [], "trap_count": 0}}
 
             if rmw_updates:
                 try:
@@ -468,7 +468,7 @@ class RmwHubAdapter:
                     return total_trap_count, {"result": {"trap_count": total_trap_count, "failed_sets": all_failed_sets}}
                 except Exception as e:
                     logger.error(f"Upload error: {e}", exc_info=True, stack_info=True)
-                    return 0, {}
+                    return 0, {"result": {"failed_sets": [], "trap_count": 0}}
 
         except Exception as e:
             logger.error(f"Error in upload task: {e}")

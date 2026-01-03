@@ -461,7 +461,7 @@ class TestRmwHubAdapter:
             trap_count, response_data = await adapter.process_upload(start_datetime)
             
             assert trap_count == 0
-            assert response_data == {}
+            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
             # Should have logged that no gear was found
             info_calls = [call for call in mock_log.call_args_list if 
                          call[1].get('level') == LogLevel.INFO and 
@@ -487,7 +487,7 @@ class TestRmwHubAdapter:
             trap_count, response_data = await adapter.process_upload(start_datetime)
             
             assert trap_count == 0
-            assert response_data == {}
+            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
             mock_logger.error.assert_called()
 
     @pytest.mark.asyncio
@@ -513,7 +513,7 @@ class TestRmwHubAdapter:
             trap_count, response_data = await adapter.process_upload(start_datetime)
             
             assert trap_count == 0
-            assert response_data == {}
+            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
             # Should have logged error
             error_calls = [call for call in mock_log.call_args_list if 
                           call[1].get('level') == LogLevel.ERROR]
@@ -727,7 +727,7 @@ class TestRmwHubAdapter:
             trap_count, response_data = await adapter.process_upload(start_datetime)
             
             assert trap_count == 0
-            assert response_data == {}
+            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
 
     @pytest.mark.asyncio
     async def test_process_upload_no_updates_created(self, adapter, sample_buoy_gear):
@@ -747,7 +747,7 @@ class TestRmwHubAdapter:
             trap_count, response_data = await adapter.process_upload(start_datetime)
             
             assert trap_count == 0
-            assert response_data == {}
+            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
 
     def test_clean_data_edge_cases(self, adapter):
         """Test cleaning data with various edge cases."""
@@ -910,7 +910,7 @@ class TestRmwHubAdapter:
             trap_count, response_data = await adapter.process_upload(start_datetime)
             
             assert trap_count == 0
-            assert response_data == {}
+            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
 
     @pytest.mark.asyncio 
     async def test_process_download_with_matching_status(self, adapter):
