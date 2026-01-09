@@ -269,7 +269,7 @@ class RmwHubAdapter:
             devices.append(device)
         
         # Determine deployment type
-        deployment_type = gearset.deployment_type or ("trawl" if len(devices) > 1 else "single")
+        deployment_type = gearset.deployment_type.lower() if gearset.deployment_type else ("trawl" if len(devices) > 1 else "single")
         
         # Build payload
         payload = {
