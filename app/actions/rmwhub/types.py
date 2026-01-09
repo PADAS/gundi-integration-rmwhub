@@ -49,16 +49,23 @@ class GearSet(BaseModel):
     when_updated_utc: str
 
     @validator("trawl_path", pre=True)
-    def none_to_empty(cls, v: object) -> object:
+    def none_to_empty(self, v: object) -> object:
         if v is None:
             return {}
         return v
 
     @validator("share_with", pre=True)
-    def none_to_empty_list(cls, v: object) -> object:
+    def none_to_empty_list(self, v: object) -> object:
         if v is None:
             return []
         return v
+
+    @validator("deployment_type", pre=True)
+    def normalize_deployment_type(self, v: object) -> str:
+        """Normalize deployment_type to lowercase to handle API inconsistencies."""
+        if v is None:
+            return ""
+        return str(v).lower()
 
     def __getitem__(self, key):
         return getattr(self, key)
