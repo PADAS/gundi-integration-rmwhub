@@ -126,7 +126,13 @@ class TestRmwHubAdapter:
             assert adapter.integration_id == integration_id
             assert adapter.er_subject_name_to_subject_mapping == {}
             assert adapter.options == {}
-            mock_rmw_client_class.assert_called_once_with("test_api_key", "https://test.rmwhub.com")
+            mock_rmw_client_class.assert_called_once_with(
+                "test_api_key",
+                "https://test.rmwhub.com",
+                default_timeout=60.0,
+                connect_timeout=10.0,
+                read_timeout=60.0
+            )
             mock_gear_client_class.assert_called_once()
 
     def test_init_with_options(self, integration_id):

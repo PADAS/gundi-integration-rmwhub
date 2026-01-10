@@ -60,15 +60,33 @@ class TestRmwHubClient:
         """Test RmwHubClient initialization."""
         api_key = "test_key_123"
         rmw_url = "https://example.rmwhub.com"
-        
+
         client = RmwHubClient(api_key=api_key, rmw_url=rmw_url)
-        
+
         assert client.api_key == api_key
         assert client.rmw_url == rmw_url
+        assert isinstance(client.default_timeout, httpx.Timeout)
         assert RmwHubClient.HEADERS == {
             "accept": "application/json",
             "Content-Type": "application/json"
         }
+
+    def test_init_with_custom_timeouts(self):
+        """Test RmwHubClient initialization with custom timeouts."""
+        api_key = "test_key_123"
+        rmw_url = "https://example.rmwhub.com"
+
+        client = RmwHubClient(
+            api_key=api_key,
+            rmw_url=rmw_url,
+            default_timeout=90.0,
+            connect_timeout=15.0,
+            read_timeout=90.0
+        )
+
+        assert client.api_key == api_key
+        assert client.rmw_url == rmw_url
+        assert isinstance(client.default_timeout, httpx.Timeout)
     
     @pytest.mark.asyncio
     @patch('httpx.AsyncClient')
@@ -462,3 +480,51 @@ class TestRmwHubClient:
             # Verify the datetime was converted to UTC
             expected_utc_iso = local_datetime.astimezone(pytz.utc).isoformat()
             assert json_data["start_datetime_utc"] == expected_utc_iso
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient')
+    async def test_upload_data_timeout(self, mock_client_class, client, sample_gearset):
+        """Test upload_data when request times out."""
+        # Mock the async client to raise a timeout exception
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ReadTimeout("Request timed out after 60 seconds")
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Call the method and expect the timeout exception to propagate
+        with pytest.raises(httpx.ReadTimeout) as exc_info:
+            await client.upload_data([sample_gearset])
+
+        # Verify the exception message
+        assert "Request timed out" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient')
+    async def test_search_hub_timeout(self, mock_client_class, client, sample_datetime):
+        """Test search_hub when request times out."""
+        # Mock the async client to raise a timeout exception
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ReadTimeout("Request timed out after 60 seconds")
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Call the method and expect the timeout exception to propagate
+        with pytest.raises(httpx.ReadTimeout) as exc_info:
+            await client.search_hub(start_datetime=sample_datetime)
+
+        # Verify the exception message
+        assert "Request timed out" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient')
+    async def test_upload_data_connect_timeout(self, mock_client_class, client, sample_gearset):
+        """Test upload_data when connection times out."""
+        # Mock the async client to raise a connect timeout exception
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.ConnectTimeout("Connection timed out after 10 seconds")
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        # Call the method and expect the timeout exception to propagate
+        with pytest.raises(httpx.ConnectTimeout) as exc_info:
+            await client.upload_data([sample_gearset])
+
+        # Verify the exception message
+        assert "Connection timed out" in str(exc_info.value)
