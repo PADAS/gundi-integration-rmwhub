@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 # we don't duplicate the literal throughout the file.
 RMWHUB_MANUFACTURER = "rmwhub"
 
+# Tolerance in degrees for comparing geographic coordinates when checking if
+# a device location has changed. 0.0001 degrees is approximately 11 meters
+# at the equator (1 degree ≈ 111 km), which accounts for minor GPS drift
+# and floating-point precision differences while still detecting meaningful
+# location changes.
+LOCATION_TOLERANCE_DEGREES = 0.0001
+
 
 def is_valid_uuid(uuid_string):
     try:
@@ -178,6 +185,12 @@ class RmwHubAdapter:
                 logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs.")
                 continue
             
+            # Create a mapping of device_id to device for quick lookup
+            er_device_mapping = {
+                str(device.device_id).lower(): device
+                for device in er_gear.devices
+            } if er_gear else {}
+            
             for trap in gearset.traps:
                 if not er_gear and trap.status == "retrieved":
                     logger.info(f"Skipping handling of trap ({trap.id}) since it's retrieved in RMWHub and doesn't exist in EarthRanger yet")
@@ -185,11 +198,28 @@ class RmwHubAdapter:
                     continue
                 
                 if er_gear:
-                    if (trap.status == "deployed" and er_gear.status == "deployed") or \
-                       (trap.status == "retrieved" and er_gear.status == "hauled"):
-                        logger.info(f"Skipping handling of trap ({trap.id}) since the trap status match ER Device/Source status")
-                        matched_status_traps.append(trap.id)
-                        continue
+                    er_device = er_device_mapping.get(str(trap.id).lower())
+                    
+                    if er_device:
+                        # Check if status matches
+                        status_matches = (trap.status == "deployed" and er_gear.status == "deployed") or \
+                                        (trap.status == "retrieved" and er_gear.status == "hauled")
+                        
+                        # Check if location matches (using small tolerance for floating point comparison)
+                        location_matches = (
+                            er_device.location and
+                            abs(er_device.location.latitude - trap.latitude) < LOCATION_TOLERANCE_DEGREES and
+                            abs(er_device.location.longitude - trap.longitude) < LOCATION_TOLERANCE_DEGREES
+                        )
+                        
+                        if status_matches and location_matches:
+                            logger.info(f"Skipping handling of trap ({trap.id}) since status and location match ER Device")
+                            matched_status_traps.append(trap.id)
+                            continue
+                        else:
+                            logger.info(f"Trap ({trap.id}) has different status or location from ER Device (status_matches={status_matches}, location_matches={location_matches})")
+                    else:
+                        logger.info(f"Trap ({trap.id}) not found in ER gear devices, will be processed")
                 
                 # Separate traps by status
                 if trap.status == "deployed":
