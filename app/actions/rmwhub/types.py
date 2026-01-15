@@ -60,6 +60,13 @@ class GearSet(BaseModel):
             return []
         return v
 
+    @validator("deployment_type", pre=True)
+    def normalize_deployment_type(cls, v: object) -> str:
+        """Normalize deployment_type to lowercase to handle API inconsistencies."""
+        if v is None:
+            return ""
+        return str(v).lower()
+
     def __getitem__(self, key):
         return getattr(self, key)
 

@@ -13,12 +13,24 @@ logger = logging.getLogger(__name__)
 
 class RmwHubClient:
     """Client for communicating with the RMW Hub API."""
-    
+
     HEADERS = {"accept": "application/json", "Content-Type": "application/json"}
 
-    def __init__(self, api_key: str, rmw_url: str):
+    def __init__(
+        self,
+        api_key: str,
+        rmw_url: str,
+        default_timeout: float = 60.0,
+        connect_timeout: float = 10.0,
+        read_timeout: float = 60.0,
+    ):
         self.api_key = api_key
         self.rmw_url = rmw_url
+        self.default_timeout = httpx.Timeout(
+            timeout=default_timeout,
+            connect=connect_timeout,
+            read=read_timeout
+        )
 
     async def search_hub(self, start_datetime: str) -> dict:
         """
@@ -35,7 +47,7 @@ class RmwHubClient:
 
         url = self.rmw_url + "/search_hub/"
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
             response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
 
         if response.status_code != 200:
@@ -65,7 +77,7 @@ class RmwHubClient:
         logger.info("Uploading %d gear sets to RMW Hub API in %s", len(sets), url)
         logger.info("Upload payload: %s", json.dumps(upload_data, default=str))
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
             response = await client.post(
                 url, headers=RmwHubClient.HEADERS, json=upload_data
             )

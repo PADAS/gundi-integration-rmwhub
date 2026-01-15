@@ -48,9 +48,15 @@ class RmwHubAdapter:
         **kwargs,
     ):
         self.integration_id = integration_id
-        self.rmw_client = RmwHubClient(api_key, rmw_url)
+        self.rmw_client = RmwHubClient(
+            api_key,
+            rmw_url,
+            default_timeout=kwargs.get('rmw_timeout', 60.0),
+            connect_timeout=kwargs.get('rmw_connect_timeout', 10.0),
+            read_timeout=kwargs.get('rmw_read_timeout', 60.0),
+        )
         self.gear_client = BuoyClient(
-            er_token, 
+            er_token,
             er_destination,
             default_timeout=kwargs.get('gear_timeout', 45.0),
             connect_timeout=kwargs.get('gear_connect_timeout', 10.0),
@@ -299,7 +305,7 @@ class RmwHubAdapter:
             devices.append(device)
         
         # Determine deployment type
-        deployment_type = gearset.deployment_type or ("trawl" if len(devices) > 1 else "single")
+        deployment_type = gearset.deployment_type if gearset.deployment_type else ("trawl" if len(devices) > 1 else "single")
         
         # Build payload
         payload = {
@@ -412,6 +418,8 @@ class RmwHubAdapter:
                     errors.append((f"Error processing gear {er_gear.name}", e))
             
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="deployed"):
+                if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
+                    continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
                     logger.info('[deployed] Creating RMW update from EarthRanger gear: %s', er_gear.name)
