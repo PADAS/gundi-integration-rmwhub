@@ -388,6 +388,8 @@ class RmwHubAdapter:
                     errors.append((f"Error processing gear {er_gear.name}", e))
             
             async for er_gear in self.iter_er_gears(start_datetime=start_datetime, state="deployed"):
+                if er_gear.manufacturer.lower() == RMWHUB_MANUFACTURER:
+                    continue  # Skip RMW Hub gears to avoid uploading their own data
                 gear_count += 1
                 try:
                     logger.info('[deployed] Creating RMW update from EarthRanger gear: %s', er_gear.name)
