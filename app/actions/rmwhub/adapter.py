@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 # we don't duplicate the literal throughout the file.
 RMWHUB_MANUFACTURER = "rmwhub"
 
+# Tolerance in degrees for comparing geographic coordinates when checking if
+# a device location has changed. 0.0001 degrees is approximately 11 meters
+# at the equator (1 degree ≈ 111 km), which accounts for minor GPS drift
+# and floating-point precision differences while still detecting meaningful
+# location changes.
+LOCATION_TOLERANCE_DEGREES = 0.0001
+
 
 def is_valid_uuid(uuid_string):
     try:
@@ -195,8 +202,8 @@ class RmwHubAdapter:
                         # Check if location matches (using small tolerance for floating point comparison)
                         location_matches = (
                             er_device.location and
-                            abs(er_device.location.latitude - trap.latitude) < 0.0001 and
-                            abs(er_device.location.longitude - trap.longitude) < 0.0001
+                            abs(er_device.location.latitude - trap.latitude) < LOCATION_TOLERANCE_DEGREES and
+                            abs(er_device.location.longitude - trap.longitude) < LOCATION_TOLERANCE_DEGREES
                         )
                         
                         if status_matches and location_matches:
