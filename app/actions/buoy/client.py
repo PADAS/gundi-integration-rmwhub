@@ -117,22 +117,23 @@ class BuoyClient:
                 response = await client.get(url, headers=self.headers, params=params)
                 
                 if response.status_code != 200:
-                    logger.error(
-                        f"Failed to get gears. Status code: {response.status_code} Body: {response.text}"
+                    raise RuntimeError(
+                        f"Failed to fetch gear from Buoy Gear API. Status code: {response.status_code} Body: {response.text}"
                     )
-                    break
 
                 data = response.json()
 
                 if "data" not in data:
-                    logger.error("Unexpected response structure")
-                    break
+                    raise RuntimeError(
+                        f"Unexpected response structure from Buoy Gear API: missing 'data' field. Response: {data}"
+                    )
 
                 page_data = data["data"]
 
                 if "results" not in page_data:
-                    logger.error("No results field in response")
-                    break
+                    raise RuntimeError(
+                        f"Unexpected response structure from Buoy Gear API: missing 'results' field. Response: {page_data}"
+                    )
 
                 results = page_data["results"]
                 

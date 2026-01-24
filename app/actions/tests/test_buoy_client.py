@@ -318,7 +318,7 @@ class TestBuoyClient:
     
     @pytest.mark.asyncio
     async def test_iter_gears_http_error(self, client):
-        """Test iteration when HTTP request fails."""
+        """Test iteration when HTTP request fails raises RuntimeError."""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
@@ -330,16 +330,16 @@ class TestBuoyClient:
             mock_client.get.return_value = mock_response
             mock_client_class.return_value = mock_client
             
-            gears = []
-            async for gear in client.iter_gears():
-                gears.append(gear)
+            with pytest.raises(RuntimeError) as exc_info:
+                async for gear in client.iter_gears():
+                    pass
             
-            # Should return empty list on error
-            assert len(gears) == 0
+            assert "Failed to fetch gear from Buoy Gear API" in str(exc_info.value)
+            assert "Status code: 500" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_iter_gears_missing_data_field(self, client):
-        """Test iteration when response is missing 'data' field."""
+        """Test iteration when response is missing 'data' field raises RuntimeError."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"error": "Invalid response"}
@@ -351,16 +351,16 @@ class TestBuoyClient:
             mock_client.get.return_value = mock_response
             mock_client_class.return_value = mock_client
             
-            gears = []
-            async for gear in client.iter_gears():
-                gears.append(gear)
+            with pytest.raises(RuntimeError) as exc_info:
+                async for gear in client.iter_gears():
+                    pass
             
-            # Should return empty list on malformed response
-            assert len(gears) == 0
+            assert "Unexpected response structure from Buoy Gear API" in str(exc_info.value)
+            assert "missing 'data' field" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_iter_gears_missing_results_field(self, client):
-        """Test iteration when response is missing 'results' field."""
+        """Test iteration when response is missing 'results' field raises RuntimeError."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"data": {"next": None}}
@@ -372,12 +372,12 @@ class TestBuoyClient:
             mock_client.get.return_value = mock_response
             mock_client_class.return_value = mock_client
             
-            gears = []
-            async for gear in client.iter_gears():
-                gears.append(gear)
+            with pytest.raises(RuntimeError) as exc_info:
+                async for gear in client.iter_gears():
+                    pass
             
-            # Should return empty list on malformed response
-            assert len(gears) == 0
+            assert "Unexpected response structure from Buoy Gear API" in str(exc_info.value)
+            assert "missing 'results' field" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_iter_gears_empty_results(self, client):
@@ -606,7 +606,7 @@ class TestBuoyClient:
 
     @pytest.mark.asyncio
     async def test_get_all_gears_error_handling(self, client):
-        """Test get_all_gears when API calls fail."""
+        """Test get_all_gears when API calls fail raises RuntimeError."""
         mock_response = Mock()
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
@@ -618,11 +618,11 @@ class TestBuoyClient:
             mock_client.get.return_value = mock_response
             mock_client_class.return_value = mock_client
             
-            gears = await client.get_all_gears()
+            with pytest.raises(RuntimeError) as exc_info:
+                await client.get_all_gears()
             
-            # Should return empty list when both calls fail
-            assert len(gears) == 0
-            assert isinstance(gears, list)
+            assert "Failed to fetch gear from Buoy Gear API" in str(exc_info.value)
+            assert "Status code: 500" in str(exc_info.value)
 
     def test_parse_gear_device_defaults_mfr_device_id_to_empty_string(self, client):
         """Test that missing mfr_device_id defaults to empty string when parsing device data."""        
