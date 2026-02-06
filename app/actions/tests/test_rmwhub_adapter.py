@@ -1055,3 +1055,296 @@ class TestRmwHubAdapter:
         result = adapter._get_serial_number_from_device_id(device_id, manufacturer)
         
         assert result == "DEVICE789012"
+
+    def test_create_gear_payload_from_gearset_deployed(self, adapter):
+        """Test creating gear payload for deployed traps includes recorded_at."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type="manual",
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="lobster",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+        
+        assert len(result["devices"]) == 1
+        device = result["devices"][0]
+        assert "recorded_at" in device
+        # For deployed status, recorded_at should equal deploy time
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
+        assert device["last_updated"] == "2023-09-15T14:30:00+00:00"
+        assert device["device_status"] == "deployed"
+        assert result["initial_deployment_date"] == "2023-09-15T14:30:00+00:00"
+
+    def test_create_gear_payload_from_gearset_hauled_with_retrieved(self, adapter):
+        """Test creating gear payload for hauled traps uses retrieved_datetime_utc for recorded_at."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc="2023-09-15T16:00:00",
+            retrieved_datetime_utc="2023-09-15T17:30:00",
+            status="retrieved",
+            accuracy="gps",
+            release_type="manual",
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="lobster",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "hauled")
+        
+        device = result["devices"][0]
+        assert "recorded_at" in device
+        # For hauled status, recorded_at should be retrieved_datetime_utc
+        assert device["recorded_at"] == "2023-09-15T17:30:00+00:00"
+        assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
+        assert device["last_updated"] == "2023-09-15T17:30:00+00:00"
+        assert device["device_status"] == "hauled"
+        # No initial_deployment_date for hauled
+        assert "initial_deployment_date" not in result
+
+    def test_create_gear_payload_from_gearset_hauled_with_surface_only(self, adapter):
+        """Test creating gear payload for hauled traps falls back to surface_datetime_utc."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc="2023-09-15T16:00:00",
+            retrieved_datetime_utc=None,  # No retrieved time
+            status="retrieved",
+            accuracy="gps",
+            release_type=None,
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="lobster",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "hauled")
+        
+        device = result["devices"][0]
+        # Should fall back to surface_datetime_utc
+        assert device["recorded_at"] == "2023-09-15T16:00:00+00:00"
+        assert device["last_updated"] == "2023-09-15T16:00:00+00:00"
+
+    def test_create_gear_payload_from_gearset_hauled_fallback_to_deploy(self, adapter):
+        """Test creating gear payload for hauled traps falls back to deploy time when no recovery times."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="retrieved",
+            accuracy="gps",
+            release_type=None,
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="lobster",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "hauled")
+        
+        device = result["devices"][0]
+        # Should fall back to deploy_datetime_utc
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
+
+    def test_create_gear_payload_from_gearset_timezone_already_present(self, adapter):
+        """Test creating gear payload when timestamps already have timezone."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00+00:00",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type=None,
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="single",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+        
+        device = result["devices"][0]
+        # Should not double-add timezone
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        assert device["recorded_at"].count("+00:00") == 1
+
+    def test_create_gear_payload_from_gearset_multiple_traps(self, adapter):
+        """Test creating gear payload with multiple traps."""
+        trap1 = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type="manual",
+            is_on_end=False
+        )
+        trap2 = Trap(
+            id="trap_002",
+            sequence=2,
+            latitude=42.234567,
+            longitude=-71.876543,
+            deploy_datetime_utc="2023-09-15T14:35:00",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type="timed",
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="trawl",
+            traps_in_set=2,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap1, trap2]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap1, trap2], "deployed")
+        
+        assert len(result["devices"]) == 2
+        assert result["deployment_type"] == "trawl"
+        assert result["devices_in_set"] == 2
+        
+        # Each device should have its own recorded_at
+        assert result["devices"][0]["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        assert result["devices"][1]["recorded_at"] == "2023-09-15T14:35:00+00:00"
+        
+        # Check release_type handling
+        assert result["devices"][0]["release_type"] == "manual"
+        assert result["devices"][1]["release_type"] == "timed"
+
+    def test_create_gear_payload_from_gearset_release_type_none(self, adapter):
+        """Test creating gear payload excludes release_type when it's 'none'."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type="none",
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="single",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+        
+        device = result["devices"][0]
+        assert "release_type" not in device
+
+    def test_create_gear_payload_from_gearset_device_additional_data(self, adapter):
+        """Test creating gear payload includes device_additional_data."""
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=42.123456,
+            longitude=-71.987654,
+            deploy_datetime_utc="2023-09-15T14:30:00",
+            surface_datetime_utc="2023-09-15T16:00:00",
+            retrieved_datetime_utc="2023-09-15T17:30:00",
+            status="deployed",
+            accuracy="gps",
+            release_type="manual",
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="single",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap]
+        )
+        
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+        
+        device = result["devices"][0]
+        assert "device_additional_data" in device
+        assert device["device_additional_data"]["id"] == "trap_001"
+        assert device["device_additional_data"]["latitude"] == 42.123456
+        assert device["device_additional_data"]["is_on_end"] is True

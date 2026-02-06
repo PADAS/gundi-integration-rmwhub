@@ -288,12 +288,27 @@ class RmwHubAdapter:
                 # For hauls, recorded_at should be when the trap was retrieved/surfaced
                 recorded_at = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_updated
 
-            # If timestamps are timezone naive, assume UTC
-            if "T" in last_deployed and "+" not in last_deployed and "Z" not in last_deployed:
+            # If timestamps are timezone naive, assume UTC (+00:00). 
+            # This also handles negative offsets, since a negative offset (e.g. -03:00) contains a '+' or '-'.
+            def is_timezone_aware(dt_str):
+                # Returns True if string contains a timezone offset or Z
+                # Assumes dt_str is ISO 8601. Handles e.g. +02:00, -09:00, +0000, Z
+                if "T" not in dt_str:
+                    return False
+                # Look for +/- offset after the 'T' segment (not in date part), or explicit 'Z'
+                # Find position of 'T'
+                t_pos = dt_str.find("T")
+                # Search for '+' or '-' after T, or 'Z' anywhere after T
+                tz_part = dt_str[t_pos:]
+                return any([
+                    "+" in tz_part or "-" in tz_part or "Z" in tz_part
+                ])
+            
+            if "T" in last_deployed and not is_timezone_aware(last_deployed):
                 last_deployed += "+00:00"
-            if "T" in last_updated and "+" not in last_updated and "Z" not in last_updated:
+            if "T" in last_updated and not is_timezone_aware(last_updated):
                 last_updated += "+00:00"
-            if "T" in recorded_at and "+" not in recorded_at and "Z" not in recorded_at:
+            if "T" in recorded_at and not is_timezone_aware(recorded_at):
                 recorded_at += "+00:00"
                 
             device_additional_data = trap.dict()
