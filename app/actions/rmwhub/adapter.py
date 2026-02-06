@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import pytz
@@ -276,29 +276,39 @@ class RmwHubAdapter:
 
         for trap in traps:
             # Get the appropriate timestamp based on status
+            now = datetime.now(timezone.utc)
             if device_status == "deployed":
-                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
+                last_deployed = trap.deploy_datetime_utc or now.isoformat()
                 last_updated = last_deployed
+                # For deployments, recorded_at should be the deploy time
+                recorded_at = last_deployed
             else:  # hauled
-                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
+                last_deployed = trap.deploy_datetime_utc or now.isoformat()
                 last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+                # For hauls, recorded_at should be when the trap was retrieved/surfaced
+                recorded_at = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_updated
 
-            # If last_deployed or last_update are timezone naive, assume UTC
+            # If timestamps are timezone naive, assume UTC
             if "T" in last_deployed and "+" not in last_deployed and "Z" not in last_deployed:
                 last_deployed += "+00:00"
             if "T" in last_updated and "+" not in last_updated and "Z" not in last_updated:
                 last_updated += "+00:00"
+            if "T" in recorded_at and "+" not in recorded_at and "Z" not in recorded_at:
+                recorded_at += "+00:00"
+                
+            device_additional_data = trap.dict()
 
             device = {
                 "device_id": trap.id,
                 "last_deployed": last_deployed,
                 "last_updated": last_updated,
+                "recorded_at": recorded_at,
                 "device_status": device_status,
                 "location": {
                     "latitude": trap.latitude,
                     "longitude": trap.longitude,
                 },
-                "device_additional_data": json.loads(json.dumps(trap.json(), default=str))
+                "device_additional_data": device_additional_data
             }
             if trap.release_type and trap.release_type != "none":
                 device["release_type"] = trap.release_type 
