@@ -1018,7 +1018,7 @@ async def iter_er_gears(self, start_datetime: datetime, state: str) -> AsyncIter
     params = {
         'updated_after': start_datetime.isoformat(),
         'source_type': SOURCE_TYPE,
-        'page_size': 1000,
+        'page_size': ER_GEAR_PAGE_SIZE,
         'state': state
     }
     
