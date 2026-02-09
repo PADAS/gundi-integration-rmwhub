@@ -13,7 +13,6 @@ This document describes the bidirectional integration between RMW Hub (Ropeless 
 The integration runs on two schedules:
 - **Every 3 minutes**: Download from RMW Hub + Upload to RMW Hub (90-day sync window)
 - **Daily at 12:10 AM**: Full sync with configurable time window
-
 ---
 
 ## RMW Hub API Connection
