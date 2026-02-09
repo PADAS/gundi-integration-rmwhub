@@ -28,6 +28,9 @@ RMWHUB_MANUFACTURER = "rmwhub"
 # location changes.
 LOCATION_TOLERANCE_DEGREES = 0.0001
 
+# Page size for iterating over gears in EarthRanger.
+ER_GEAR_PAGE_SIZE = 100
+
 
 def is_valid_uuid(uuid_string):
     try:
@@ -149,7 +152,7 @@ class RmwHubAdapter:
         Process the sets from the RMW Hub API and convert them to gear payloads.
         Returns a list of gear payloads ready to be sent to the Buoy API.
         """
-        gears = await self.gear_client.get_all_gears()
+        gears = await self.gear_client.get_all_gears(page_size=ER_GEAR_PAGE_SIZE)
         logger.info(f"Found existing {len(gears)} in EarthRanger")
 
         gear_id_to_set_mapping = {
@@ -396,7 +399,7 @@ class RmwHubAdapter:
         """
         # Build query parameters
         params = {}
-        params['page_size'] = 1000
+        params['page_size'] = ER_GEAR_PAGE_SIZE
         if state:
             params['state'] = state
         

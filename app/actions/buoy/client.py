@@ -147,6 +147,7 @@ class BuoyClient:
 
     async def get_all_gears(
         self,
+        page_size: int = 25,
         timeout: Optional[httpx.Timeout] = None,
     ) -> List[BuoyGear]:
         """
@@ -160,9 +161,9 @@ class BuoyClient:
             List of BuoyGear objects
         """
         gears = []
-        async for gear in self.iter_gears(params={"state": "deployed"}, timeout=timeout):
+        async for gear in self.iter_gears(params={"state": "deployed", "page_size": page_size}, timeout=timeout):
             gears.append(gear)
-        async for gear in self.iter_gears(params={"state": "hauled"}, timeout=timeout):
+        async for gear in self.iter_gears(params={"state": "hauled", "page_size": page_size}, timeout=timeout):
             gears.append(gear)
         return gears
 

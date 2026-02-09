@@ -543,8 +543,8 @@ class TestBuoyClient:
             
             # Verify the correct parameters were used
             calls = mock_client.get.call_args_list
-            assert calls[0][1]['params'] == {"state": "deployed"}
-            assert calls[1][1]['params'] == {"state": "hauled"}
+            assert calls[0][1]['params'] == {"state": "deployed", "page_size": 25}
+            assert calls[1][1]['params'] == {"state": "hauled", "page_size": 25}
 
     @pytest.mark.asyncio
     async def test_get_all_gears_with_timeout(self, client, sample_gear_data):
