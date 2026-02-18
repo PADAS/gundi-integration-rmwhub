@@ -10,7 +10,7 @@ import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
 
 from app.actions.buoy.types import BuoyDevice, BuoyGear, DeviceLocation
-from app.actions.rmwhub.adapter import RmwHubAdapter
+from app.actions.rmwhub.adapter import RmwHubAdapter, deduplicate_traps_by_id
 from app.actions.rmwhub.types import GearSet, Trap
 
 
@@ -1347,4 +1347,117 @@ class TestRmwHubAdapter:
         assert "device_additional_data" in device
         assert device["device_additional_data"]["id"] == "trap_001"
         assert device["device_additional_data"]["latitude"] == 42.123456
-        assert device["device_additional_data"]["is_on_end"] is True
+
+
+class TestDeduplicateTrapsById:
+    """Tests for deduplicate_traps_by_id helper."""
+
+    def test_no_duplicates_unchanged(self):
+        """When all trap_ids are unique, list is unchanged (order by sequence)."""
+        traps = [
+            Trap(id="id-a", sequence=2, latitude=0, longitude=0, deploy_datetime_utc=None,
+                 surface_datetime_utc=None, retrieved_datetime_utc=None, status="deployed",
+                 accuracy="gps", release_type=None, is_on_end=False),
+            Trap(id="id-b", sequence=1, latitude=0, longitude=0, deploy_datetime_utc=None,
+                 surface_datetime_utc=None, retrieved_datetime_utc=None, status="deployed",
+                 accuracy="gps", release_type=None, is_on_end=True),
+        ]
+        out, reports = deduplicate_traps_by_id(traps)
+        assert len(out) == 2
+        assert reports == []
+        assert [t.id for t in out] == ["id-b", "id-a"]  # sorted by sequence
+
+    def test_duplicate_trap_id_keeps_one_by_sequence(self):
+        """When two traps share trap_id, keep the one with lowest sequence."""
+        trap1 = Trap(id="same-id", sequence=1, latitude=44.1, longitude=-67.5,
+                     deploy_datetime_utc="2026-02-15T18:01:00Z", surface_datetime_utc=None,
+                     retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+                     release_type="acoustic", is_on_end=False)
+        trap2 = Trap(id="same-id", sequence=2, latitude=44.2, longitude=-67.5,
+                     deploy_datetime_utc="2026-02-15T18:02:00Z", surface_datetime_utc=None,
+                     retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+                     release_type="acoustic", is_on_end=True)
+        trap3 = Trap(id="other-id", sequence=3, latitude=44.3, longitude=-67.5,
+                     deploy_datetime_utc="2026-02-15T18:03:00Z", surface_datetime_utc=None,
+                     retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+                     release_type="acoustic", is_on_end=True)
+        traps = [trap1, trap2, trap3]
+        out, reports = deduplicate_traps_by_id(traps)
+        assert len(out) == 2
+        assert [t.id for t in out] == ["same-id", "other-id"]
+        assert out[0].sequence == 1 and out[0].latitude == 44.1  # kept first by sequence
+        assert reports == [("same-id", 1)]
+
+    def test_three_entries_same_trap_id_keeps_one(self):
+        """Three traps with same trap_id (e.g. RMW Hub duplicate rows) collapse to one."""
+        traps = [
+            Trap(id="dup", sequence=1, latitude=0, longitude=0, deploy_datetime_utc=None,
+                 surface_datetime_utc=None, retrieved_datetime_utc=None, status="deployed",
+                 accuracy="gps", release_type=None, is_on_end=False),
+            Trap(id="dup", sequence=2, latitude=0, longitude=0, deploy_datetime_utc=None,
+                 surface_datetime_utc=None, retrieved_datetime_utc=None, status="deployed",
+                 accuracy="gps", release_type=None, is_on_end=False),
+            Trap(id="dup", sequence=3, latitude=0, longitude=0, deploy_datetime_utc=None,
+                 surface_datetime_utc=None, retrieved_datetime_utc=None, status="deployed",
+                 accuracy="gps", release_type=None, is_on_end=True),
+        ]
+        out, reports = deduplicate_traps_by_id(traps)
+        assert len(out) == 1
+        assert out[0].id == "dup" and out[0].sequence == 1
+        assert reports == [("dup", 2)]
+
+
+class TestProcessDownloadDuplicateTrapIds:
+    """Process download when a gearset has duplicate trap_ids (e.g. three device gearsets with one id repeated)."""
+
+    @pytest.fixture
+    def adapter(self):
+        with patch('app.actions.rmwhub.adapter.RmwHubClient'), \
+             patch('app.actions.rmwhub.adapter.BuoyClient'):
+            return RmwHubAdapter(
+                integration_id=str(uuid.uuid4()),
+                api_key="test",
+                rmw_url="https://test.rmwhub.com",
+                er_token="test",
+                er_destination="https://test.er.com",
+            )
+
+    @pytest.mark.asyncio
+    async def test_process_download_deduplicates_trap_ids_in_payload(self, adapter):
+        """Gearset with 3 traps where 2 share the same trap_id produces payload with 2 unique device_ids."""
+        set_id = str(uuid.uuid4())
+        trap_id_a = str(uuid.uuid4())
+        trap_id_b = str(uuid.uuid4())
+        gearset = GearSet(
+            vessel_id=str(uuid.uuid4()),
+            id=set_id,
+            deployment_type="trawl",
+            traps_in_set=3,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2026-02-15T18:03:03Z",
+            traps=[
+                Trap(id=trap_id_a, sequence=1, latitude=44.61484957, longitude=-67.50086846,
+                     deploy_datetime_utc="2026-02-15T18:01:58Z", surface_datetime_utc=None,
+                     retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+                     release_type="acoustic", is_on_end=True),
+                Trap(id=trap_id_b, sequence=2, latitude=44.61540741, longitude=-67.50043699,
+                     deploy_datetime_utc="2026-02-15T18:02:30Z", surface_datetime_utc=None,
+                     retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+                     release_type="acoustic", is_on_end=True),
+                Trap(id=trap_id_b, sequence=3, latitude=44.61540741, longitude=-67.50043699,
+                     deploy_datetime_utc="2026-02-15T18:02:30Z", surface_datetime_utc=None,
+                     retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+                     release_type="acoustic", is_on_end=True),
+            ],
+        )
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[])
+
+        payloads = await adapter.process_download([gearset])
+
+        assert len(payloads) == 1
+        payload = payloads[0]
+        assert payload["devices_in_set"] == 2
+        device_ids = [d["device_id"] for d in payload["devices"]]
+        assert sorted(device_ids) == sorted([trap_id_a, trap_id_b])
+        assert len(device_ids) == len(set(device_ids))  # all unique

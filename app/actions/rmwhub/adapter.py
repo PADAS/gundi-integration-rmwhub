@@ -39,6 +39,39 @@ def is_valid_uuid(uuid_string):
     except ValueError:
         return False
 
+
+def deduplicate_traps_by_id(traps: List[Trap]) -> Tuple[List[Trap], List[Tuple[str, int]]]:
+    """
+    Ensure at most one trap per trap_id. Duplicate trap_ids in a set (e.g. from RMW Hub
+    data) would produce duplicate device_ids in the Buoy payload, which is invalid.
+
+    Strategy: keep one representative trap per trap_id. When duplicates exist, keep the
+    trap with the lowest sequence number (first in line); if sequences are equal, keep
+    the first occurrence. Logs a warning for each trap_id that had duplicates.
+
+    Returns:
+        (deduplicated list of traps, list of (trap_id, duplicate_count) for logging)
+    """
+    by_id: Dict[str, List[Trap]] = {}
+    for trap in traps:
+        key = str(trap.id).lower()
+        by_id.setdefault(key, []).append(trap)
+
+    deduplicated = []
+    duplicate_reports: List[Tuple[str, int]] = []
+    for trap_id, group in by_id.items():
+        if len(group) > 1:
+            duplicate_reports.append((trap_id, len(group) - 1))
+            # Keep one: lowest sequence first, then first occurrence in list (stable)
+            chosen = min(enumerate(group), key=lambda i_t: (i_t[1].sequence, i_t[0]))[1]
+            deduplicated.append(chosen)
+        else:
+            deduplicated.append(group[0])
+
+    # Restore original order by sequence so payload order is stable
+    deduplicated.sort(key=lambda t: t.sequence)
+    return deduplicated, duplicate_reports
+
 class RmwHubAdapter:
     def __init__(
         self,
@@ -231,6 +264,23 @@ class RmwHubAdapter:
                 elif trap.status == "retrieved":
                     logger.info(f"Preparing trap ({trap.id}) for hauling")
                     traps_to_haul.append(trap)
+            
+            # Deduplicate by trap_id so we never send duplicate device_ids in one set.
+            # RMW Hub can sometimes return the same trap_id multiple times in a set (e.g. duplicate rows).
+            if traps_to_deploy:
+                traps_to_deploy, dup_deploy = deduplicate_traps_by_id(traps_to_deploy)
+                for trap_id, dropped in dup_deploy:
+                    logger.warning(
+                        "Gear set %s: deduplicated traps by trap_id; kept one of %d entries for trap_id=%s (Buoy API expects unique device_id per set)",
+                        gearset.id, dropped + 1, trap_id,
+                    )
+            if traps_to_haul:
+                traps_to_haul, dup_haul = deduplicate_traps_by_id(traps_to_haul)
+                for trap_id, dropped in dup_haul:
+                    logger.warning(
+                        "Gear set %s: deduplicated traps by trap_id; kept one of %d entries for trap_id=%s (Buoy API expects unique device_id per set)",
+                        gearset.id, dropped + 1, trap_id,
+                    )
             
             # Create gear payloads for deployment
             if traps_to_deploy:
