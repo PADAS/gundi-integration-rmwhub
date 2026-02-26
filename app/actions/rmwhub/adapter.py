@@ -32,6 +32,25 @@ LOCATION_TOLERANCE_DEGREES = 0.0001
 ER_GEAR_PAGE_SIZE = 100
 
 
+def _latest_haul_time_iso(traps: List[Trap], gearset_when_updated_utc: Optional[str]) -> str:
+    """
+    Return the latest haul-related timestamp (retrieved or surface) among traps, as ISO string.
+    If none exist, return gearset_when_updated_utc or current time in UTC.
+    Used when hauling a whole gearset so devices without their own retrieved time get a consistent time.
+    """
+    candidates: List[str] = []
+    for t in traps:
+        for attr in ("retrieved_datetime_utc", "surface_datetime_utc"):
+            v = getattr(t, attr, None)
+            if v and isinstance(v, str) and "T" in v:
+                candidates.append(v)
+    if candidates:
+        return max(candidates)
+    if gearset_when_updated_utc and "T" in gearset_when_updated_utc:
+        return gearset_when_updated_utc
+    return datetime.now(timezone.utc).isoformat()
+
+
 def is_valid_uuid(uuid_string):
     try:
         uuid.UUID(str(uuid_string))
@@ -283,7 +302,7 @@ class RmwHubAdapter:
                     )
             
             # Create gear payloads for deployment
-            if traps_to_deploy:
+            if traps_to_deploy and not traps_to_haul:
                 payload = self._create_gear_payload_from_gearset(
                     gearset,
                     traps_to_deploy,
@@ -291,15 +310,18 @@ class RmwHubAdapter:
                 )
                 logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_to_deploy)} traps: {json.dumps(payload, default=str)}")
                 gear_payloads.append(payload)
-            
-            # Create gear payloads for hauling
+
+            # Create gear payloads for hauling: if any device is marked for haul, haul the whole gearset in Buoy
             if traps_to_haul:
+                all_traps_deduped, _ = deduplicate_traps_by_id(gearset.traps)
+                haul_fallback_time = _latest_haul_time_iso(all_traps_deduped, getattr(gearset, "when_updated_utc", None))
                 payload = self._create_gear_payload_from_gearset(
                     gearset,
-                    traps_to_haul,
-                    device_status="hauled"
+                    all_traps_deduped,
+                    device_status="hauled",
+                    haul_fallback_time_utc=haul_fallback_time,
                 )
-                logger.info(f"Created haul payload for gear set {gearset.id} with {len(traps_to_haul)} traps: {json.dumps(payload, default=str)}")
+                logger.info(f"Created haul payload for gear set {gearset.id} (whole set, {len(all_traps_deduped)} traps): {json.dumps(payload, default=str)}")
                 gear_payloads.append(payload)
         
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
@@ -312,7 +334,8 @@ class RmwHubAdapter:
         self,
         gearset: GearSet,
         traps: List[Trap],
-        device_status: str
+        device_status: str,
+        haul_fallback_time_utc: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a gear payload from a RMW Hub gearset in the format expected by the Buoy API.
@@ -321,6 +344,8 @@ class RmwHubAdapter:
             gearset: The RMW Hub gear set
             traps: List of traps to include in this payload
             device_status: Status of the devices (deployed/hauled)
+            haul_fallback_time_utc: When hauling a whole set, use this for last_updated/recorded_at
+                for traps that have no retrieved_datetime_utc or surface_datetime_utc.
         
         Returns:
             Dict in the format expected by /api/v1.0/gear/ POST endpoint
@@ -337,9 +362,15 @@ class RmwHubAdapter:
                 recorded_at = last_deployed
             else:  # hauled
                 last_deployed = trap.deploy_datetime_utc or now.isoformat()
-                last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
-                # For hauls, recorded_at should be when the trap was retrieved/surfaced
-                recorded_at = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_updated
+                if trap.retrieved_datetime_utc or trap.surface_datetime_utc:
+                    last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+                    recorded_at = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_updated
+                elif haul_fallback_time_utc:
+                    last_updated = haul_fallback_time_utc
+                    recorded_at = haul_fallback_time_utc
+                else:
+                    last_updated = last_deployed
+                    recorded_at = last_updated
 
             # If timestamps are timezone naive, assume UTC (+00:00). 
             # This also handles negative offsets, since a negative offset (e.g. -03:00) contains a '+' or '-'.

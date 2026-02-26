@@ -171,7 +171,7 @@ class GearSet(BaseModel):
 - `"trawl"`: Multiple traps (>1)
 - `"single"`: Single trap deployment
 
-**Multi-trap sets**: Sets with any number of traps (e.g. three device gearsets) are supported. The download flow parses all traps and builds one gear payload per set for the Buoy API.
+**Multi-trap sets**: Sets with any number of traps (e.g. three device gearsets) are supported. The download flow parses all traps and builds one gear payload per set for the Buoy API. When any device in a set is marked for haul, the **whole set** is hauled in Buoy (all devices in one haul payload) so the gearset never ends up in a partial state.
 
 ### Trap Object
 
@@ -246,13 +246,15 @@ recorded_at = retrieved_datetime_utc or surface_datetime_utc or deploy_datetime_
 
 Download produces **gear payloads** for the Buoy API (Earth Ranger). For each set we may emit up to two payloads: one for deployment and one for haul, depending on which traps need syncing.
 
+**Whole-gearset haul**: For gearsets coming from RMW Hub, if **any** device in the set is marked for haul (status `retrieved`), we haul the **entire** gearset in Buoy. We send one haul payload that includes every trap in the set, not only the ones RMW marks as retrieved. Traps that RMW still shows as `deployed` (e.g. due to sync error) are included in that haul payload and use a fallback haul time (latest retrieved/surface time in the set, or the gearset’s `when_updated_utc`). We do **not** emit a deployment payload for that set when we emit a haul. This keeps Buoy consistent: one haul per set when any device is hauled, avoiding partial states (one device hauled, one still deployed).
+
 | RMW Hub Status | ER/Buoy State | Action |
 |----------------|---------------|--------|
 | `deployed` | Not exists | Include in deployment payload |
 | `deployed` | `deployed` (same location) | Skip (already in sync) |
 | `deployed` | `hauled` | Include in deployment payload (re-deployment) |
 | `retrieved` | Not exists | Skip (no deployment history; log) |
-| `retrieved` | `deployed` | Include in haul payload |
+| `retrieved` | `deployed` | Trigger **whole-gearset haul** (all traps in set) |
 | `retrieved` | `hauled` (same location) | Skip (already in sync) |
 
 #### Records We Discard
@@ -296,10 +298,16 @@ async def process_download(self, rmw_sets: List[GearSet]) -> List[Dict]:
         traps_to_deploy, _ = deduplicate_traps_by_id(traps_to_deploy)
         traps_to_haul, _ = deduplicate_traps_by_id(traps_to_haul)
 
-        if traps_to_deploy:
+        # Deploy only when we are not hauling this set (whole-gearset haul takes precedence)
+        if traps_to_deploy and not traps_to_haul:
             gear_payloads.append(_create_gear_payload_from_gearset(gearset, traps_to_deploy, "deployed"))
+        # If any device is marked for haul, haul the whole gearset (all traps in set)
         if traps_to_haul:
-            gear_payloads.append(_create_gear_payload_from_gearset(gearset, traps_to_haul, "hauled"))
+            all_traps_deduped, _ = deduplicate_traps_by_id(gearset.traps)
+            haul_fallback_time = _latest_haul_time_iso(all_traps_deduped, gearset.when_updated_utc)
+            gear_payloads.append(_create_gear_payload_from_gearset(
+                gearset, all_traps_deduped, "hauled", haul_fallback_time_utc=haul_fallback_time
+            ))
 
     return gear_payloads  # Sent to Buoy API via send_gear_to_buoy_api()
 ```
@@ -556,9 +564,11 @@ def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 7. BUILD GEAR PAYLOADS                                      │
-│    - One payload per (set, action): deploy and/or haul       │
-│    - recorded_at from deploy/retrieve timestamps            │
-│    - devices_in_set, devices[] with unique device_id        │
+│    - If any trap is to be hauled → haul **whole gearset**   │
+│      (all traps in set, one haul payload; no deploy)        │
+│    - Else if traps to deploy → one deploy payload           │
+│    - Haul fallback time for traps without retrieved time    │
+│    - devices_in_set, devices[] with unique device_id         │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
@@ -1146,6 +1156,7 @@ This bidirectional integration provides robust synchronization between RMW Hub a
 ✅ **Bidirectional sync** - Download from RMW Hub (gear payloads to Buoy API), upload our data back  
 ✅ **API key authentication** - Simple, persistent authentication  
 ✅ **Intelligent filtering** - Process only status/location changes; skip in-sync traps  
+✅ **Whole-gearset haul** - When any device in an RMW Hub set is retrieved, haul the entire set in Buoy (avoids partial haul state)  
 ✅ **Duplicate trap_id handling** - Collapse duplicate trap_ids per set (keep one per id, log warning) so Buoy API always receives unique device_id per set  
 ✅ **Multi-trap sets** - Supports sets with any number of traps (e.g. three device gearsets)  
 ✅ **Multi-destination support** - Handle multiple ER environments  
