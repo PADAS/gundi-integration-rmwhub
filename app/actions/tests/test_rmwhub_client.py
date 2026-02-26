@@ -340,7 +340,9 @@ class TestRmwHubClient:
         
         # Verify error was logged
         mock_logger.error.assert_called_once_with(
-            'Failed to upload data to RMW Hub API. Error: 500 - b\'{"error": "Internal server error"}\''
+            "Failed to upload data to RMW Hub API. Error: %s - %s",
+            500,
+            b'{"error": "Internal server error"}',
         )
     
     @pytest.mark.asyncio
