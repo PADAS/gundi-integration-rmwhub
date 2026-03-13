@@ -59,6 +59,25 @@ def is_valid_uuid(uuid_string):
         return False
 
 
+def is_valid_uuid_for_buoy(uuid_string):
+    """
+    Return True only if the UUID is valid and acceptable by the Buoy API.
+    The Buoy API does not allow nil or reserved (zero-prefix) UUIDs;
+    we skip gearsets/traps using these so we don't send payloads that will be rejected.
+    """
+    try:
+        u = uuid.UUID(str(uuid_string))
+    except ValueError:
+        return False
+    # Reject nil UUID (all 128 bits zero)
+    if u.int == 0:
+        return False
+    # Reject UUIDs with first 96 bits zero (00000000-0000-0000-0000-0000xxxxxxxx)
+    if u.int < (1 << 32):
+        return False
+    return True
+
+
 def deduplicate_traps_by_id(traps: List[Trap]) -> Tuple[List[Trap], List[Tuple[str, int]]]:
     """
     Ensure at most one trap per trap_id. Duplicate trap_ids in a set (e.g. from RMW Hub
@@ -212,6 +231,15 @@ class RmwHubAdapter:
             for gear in gears
         }
 
+        # Map each device_id to the set_id(s) it belongs to in ER. Used to detect and log
+        # when a device has moved between sets in RMW Hub (e.g. correction after mistaken haul).
+        device_id_to_er_set_ids: Dict[str, List[str]] = {}
+        for gear in gears:
+            set_id_lower = str(gear.id).lower()
+            for device in gear.devices:
+                dev_id = str(device.device_id).lower()
+                device_id_to_er_set_ids.setdefault(dev_id, []).append(set_id_lower)
+
         # Deduplicate gears by ID (case-insensitive), keeping only the most recent one
         unique_sets = {}
         for rmw_set in rmw_sets:
@@ -236,8 +264,8 @@ class RmwHubAdapter:
             traps_to_deploy = []
             traps_to_haul = []
             er_gear = gear_id_to_set_mapping.get(str(gearset.id).lower())
-            if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
-                logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs.")
+            if not is_valid_uuid_for_buoy(gearset.id) or any(not is_valid_uuid_for_buoy(trap.id) for trap in gearset.traps):
+                logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs (Buoy API does not allow nil/reserved UUIDs).")
                 continue
             
             # Create a mapping of device_id to device for quick lookup
@@ -254,7 +282,9 @@ class RmwHubAdapter:
                 
                 if er_gear:
                     er_device = er_device_mapping.get(str(trap.id).lower())
-                    
+                    # Only skip when the device is on *this* set in ER with matching status/location.
+                    # Devices that moved from another set are not in er_device_mapping for this set,
+                    # so they are included in traps_to_deploy and sent (full set payload when set exists).
                     if er_device:
                         # Check if status matches
                         status_matches = (trap.status == "deployed" and er_gear.status == "deployed") or \
@@ -274,7 +304,18 @@ class RmwHubAdapter:
                         else:
                             logger.info(f"Trap ({trap.id}) has different status or location from ER Device (status_matches={status_matches}, location_matches={location_matches})")
                     else:
-                        logger.info(f"Trap ({trap.id}) not found in ER gear devices, will be processed")
+                        # Trap not on this set in ER — will be processed (e.g. new device or device moved from another set).
+                        other_sets = [
+                            s for s in device_id_to_er_set_ids.get(str(trap.id).lower(), [])
+                            if s != str(gearset.id).lower()
+                        ]
+                        if other_sets:
+                            logger.info(
+                                "Trap (%s) is on set(s) %s in ER but RMW has it on set %s; including in payload (device moved between sets)",
+                                trap.id, other_sets, gearset.id,
+                            )
+                        else:
+                            logger.info(f"Trap ({trap.id}) not found in ER gear devices, will be processed")
                 
                 # Separate traps by status
                 if trap.status == "deployed":
@@ -303,12 +344,21 @@ class RmwHubAdapter:
             
             # Create gear payloads for deployment
             if traps_to_deploy and not traps_to_haul:
+                # When the set already exists in ER and we have new traps to deploy (e.g. device moved
+                # from another set), send the full trap list for this set so the Buoy API can update
+                # set membership. Sending only the new device can be ignored if the device already
+                # exists elsewhere in ER (same device_id/location).
+                if er_gear:
+                    all_traps_for_set, _ = deduplicate_traps_by_id(gearset.traps)
+                    traps_for_payload = all_traps_for_set
+                else:
+                    traps_for_payload = traps_to_deploy
                 payload = self._create_gear_payload_from_gearset(
                     gearset,
-                    traps_to_deploy,
+                    traps_for_payload,
                     device_status="deployed"
                 )
-                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_to_deploy)} traps: {json.dumps(payload, default=str)}")
+                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_for_payload)} traps: {json.dumps(payload, default=str)}")
                 gear_payloads.append(payload)
 
             # Create gear payloads for hauling: if any device is marked for haul, haul the whole gearset in Buoy
@@ -357,9 +407,15 @@ class RmwHubAdapter:
             now = datetime.now(timezone.utc)
             if device_status == "deployed":
                 last_deployed = trap.deploy_datetime_utc or now.isoformat()
-                last_updated = last_deployed
-                # For deployments, recorded_at should be the deploy time
-                recorded_at = last_deployed
+                # Use gearset's when_updated_utc for last_updated/recorded_at when it's later than
+                # deploy time, so location-only (or set-move) updates are seen as updates by the API.
+                gearset_updated = getattr(gearset, "when_updated_utc", None) or ""
+                if gearset_updated and "T" in gearset_updated and gearset_updated > last_deployed:
+                    last_updated = gearset_updated
+                    recorded_at = gearset_updated
+                else:
+                    last_updated = last_deployed
+                    recorded_at = last_deployed
             else:  # hauled
                 last_deployed = trap.deploy_datetime_utc or now.isoformat()
                 if trap.retrieved_datetime_utc or trap.surface_datetime_utc:

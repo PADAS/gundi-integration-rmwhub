@@ -1087,12 +1087,43 @@ class TestRmwHubAdapter:
         assert len(result["devices"]) == 1
         device = result["devices"][0]
         assert "recorded_at" in device
-        # For deployed status, recorded_at should equal deploy time
-        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        # When gearset.when_updated_utc is after deploy time, use it so location/set updates are applied
+        assert device["recorded_at"] == "2023-09-15T18:00:00Z"
         assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
-        assert device["last_updated"] == "2023-09-15T14:30:00+00:00"
+        assert device["last_updated"] == "2023-09-15T18:00:00Z"
         assert device["device_status"] == "deployed"
         assert result["initial_deployment_date"] == "2023-09-15T14:30:00+00:00"
+
+    def test_create_gear_payload_from_gearset_deployed_uses_deploy_time_when_gearset_unchanged(self, adapter):
+        """When when_updated_utc is missing or not after deploy, last_updated/recorded_at stay at deploy time."""
+        trap = Trap(
+            id="trap_002",
+            sequence=1,
+            latitude=42.0,
+            longitude=-70.0,
+            deploy_datetime_utc="2023-09-20T10:00:00Z",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type="manual",
+            is_on_end=True
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_002",
+            deployment_type="single",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-20T09:00:00Z",  # before deploy
+            traps=[trap]
+        )
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+        device = result["devices"][0]
+        assert device["last_deployed"] == "2023-09-20T10:00:00Z"
+        assert device["last_updated"] == "2023-09-20T10:00:00Z"
+        assert device["recorded_at"] == "2023-09-20T10:00:00Z"
 
     def test_create_gear_payload_from_gearset_hauled_with_retrieved(self, adapter):
         """Test creating gear payload for hauled traps uses retrieved_datetime_utc for recorded_at."""
@@ -1227,9 +1258,9 @@ class TestRmwHubAdapter:
         result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
         
         device = result["devices"][0]
-        # Should not double-add timezone
-        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
-        assert device["recorded_at"].count("+00:00") == 1
+        # When gearset.when_updated_utc is after deploy, it is used (already has Z, no double-add)
+        assert device["recorded_at"] == "2023-09-15T18:00:00Z"
+        assert device["recorded_at"].count("+00:00") == 0  # has Z, not +00:00
 
     def test_create_gear_payload_from_gearset_multiple_traps(self, adapter):
         """Test creating gear payload with multiple traps."""
@@ -1276,9 +1307,9 @@ class TestRmwHubAdapter:
         assert result["deployment_type"] == "trawl"
         assert result["devices_in_set"] == 2
         
-        # Each device should have its own recorded_at
-        assert result["devices"][0]["recorded_at"] == "2023-09-15T14:30:00+00:00"
-        assert result["devices"][1]["recorded_at"] == "2023-09-15T14:35:00+00:00"
+        # Each device uses gearset when_updated_utc when it's after deploy so location/set updates apply
+        assert result["devices"][0]["recorded_at"] == "2023-09-15T18:00:00Z"
+        assert result["devices"][1]["recorded_at"] == "2023-09-15T18:00:00Z"
         
         # Check release_type handling
         assert result["devices"][0]["release_type"] == "manual"
