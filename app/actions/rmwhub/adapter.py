@@ -29,7 +29,23 @@ RMWHUB_MANUFACTURER = "rmwhub"
 LOCATION_TOLERANCE_DEGREES = 0.0001
 
 # Page size for iterating over gears in EarthRanger.
+# Reduced from the default 1000 to mitigate timeouts and memory usage during sync.
 ER_GEAR_PAGE_SIZE = 100
+
+
+def _is_timezone_aware(dt_str: str) -> bool:
+    """Return True if an ISO 8601 datetime string contains a timezone offset or Z."""
+    if "T" not in dt_str:
+        return False
+    tz_part = dt_str[dt_str.find("T"):]
+    return "+" in tz_part or "-" in tz_part or "Z" in tz_part
+
+
+def _ensure_tz_utc(dt_str: str) -> str:
+    """If an ISO 8601 string is timezone-naive, append +00:00 (assume UTC)."""
+    if "T" in dt_str and not _is_timezone_aware(dt_str):
+        return dt_str + "+00:00"
+    return dt_str
 
 
 def _parse_iso_to_utc(dt_str: str) -> Optional[datetime]:
@@ -264,7 +280,9 @@ class RmwHubAdapter:
             else:
                 # Keep the gear with the later last_updated timestamp
                 existing_gear = unique_sets[set_id_lower]
-                if rmw_set.when_updated_utc > existing_gear.when_updated_utc:
+                new_dt = _parse_iso_to_utc(rmw_set.when_updated_utc or "")
+                old_dt = _parse_iso_to_utc(existing_gear.when_updated_utc or "")
+                if new_dt and old_dt and new_dt > old_dt:
                     unique_sets[set_id_lower] = rmw_set
         
         rmw_sets = list(unique_sets.values())
@@ -373,7 +391,8 @@ class RmwHubAdapter:
                     traps_for_payload,
                     device_status="deployed"
                 )
-                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_for_payload)} traps: {json.dumps(payload, default=str)}")
+                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_for_payload)} traps")
+                logger.debug("Deployment payload for %s: %s", gearset.id, json.dumps(payload, default=str))
                 gear_payloads.append(payload)
 
             # Create gear payloads for hauling: if any device is marked for haul, haul the whole gearset in Buoy
@@ -386,13 +405,14 @@ class RmwHubAdapter:
                     device_status="hauled",
                     haul_fallback_time_utc=haul_fallback_time,
                 )
-                logger.info(f"Created haul payload for gear set {gearset.id} (whole set, {len(all_traps_deduped)} traps): {json.dumps(payload, default=str)}")
+                logger.info(f"Created haul payload for gear set {gearset.id} (whole set, {len(all_traps_deduped)} traps)")
+                logger.debug("Haul payload for %s: %s", gearset.id, json.dumps(payload, default=str))
                 gear_payloads.append(payload)
         
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
         logger.info(f"Skipped matching {len(matched_status_traps)} traps with same status in EarthRanger: {matched_status_traps}")
         logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
-        logger.info(f"Gear payloads: {json.dumps(gear_payloads, default=str)}")
+        logger.debug("Gear payloads: %s", json.dumps(gear_payloads, default=str))
         return gear_payloads
 
     def _create_gear_payload_from_gearset(
@@ -416,10 +436,10 @@ class RmwHubAdapter:
             Dict in the format expected by /api/v1.0/gear/ POST endpoint
         """
         devices = []
+        now = datetime.now(timezone.utc)
 
         for trap in traps:
             # Get the appropriate timestamp based on status
-            now = datetime.now(timezone.utc)
             if device_status == "deployed":
                 last_deployed = trap.deploy_datetime_utc or now.isoformat()
                 # Use gearset's when_updated_utc for last_updated/recorded_at when it's later than
@@ -445,28 +465,10 @@ class RmwHubAdapter:
                     last_updated = last_deployed
                     recorded_at = last_updated
 
-            # If timestamps are timezone naive, assume UTC (+00:00). 
-            # This also handles negative offsets, since a negative offset (e.g. -03:00) contains a '+' or '-'.
-            def is_timezone_aware(dt_str):
-                # Returns True if string contains a timezone offset or Z
-                # Assumes dt_str is ISO 8601. Handles e.g. +02:00, -09:00, +0000, Z
-                if "T" not in dt_str:
-                    return False
-                # Look for +/- offset after the 'T' segment (not in date part), or explicit 'Z'
-                # Find position of 'T'
-                t_pos = dt_str.find("T")
-                # Search for '+' or '-' after T, or 'Z' anywhere after T
-                tz_part = dt_str[t_pos:]
-                return any([
-                    "+" in tz_part or "-" in tz_part or "Z" in tz_part
-                ])
-            
-            if "T" in last_deployed and not is_timezone_aware(last_deployed):
-                last_deployed += "+00:00"
-            if "T" in last_updated and not is_timezone_aware(last_updated):
-                last_updated += "+00:00"
-            if "T" in recorded_at and not is_timezone_aware(recorded_at):
-                recorded_at += "+00:00"
+            # If timestamps are timezone naive, assume UTC (+00:00).
+            last_deployed = _ensure_tz_utc(last_deployed)
+            last_updated = _ensure_tz_utc(last_updated)
+            recorded_at = _ensure_tz_utc(recorded_at)
                 
             device_additional_data = trap.dict()
 
@@ -517,8 +519,8 @@ class RmwHubAdapter:
                 
                 
             # If earliest_deployment is timezone naive, assume UTC
-            if earliest_deployment and "T" in earliest_deployment and "+" not in earliest_deployment and "Z" not in earliest_deployment:
-                earliest_deployment += "+00:00"
+            if earliest_deployment:
+                earliest_deployment = _ensure_tz_utc(earliest_deployment)
 
             if earliest_deployment:
                 payload["initial_deployment_date"] = earliest_deployment
@@ -590,7 +592,7 @@ class RmwHubAdapter:
                 gear_count += 1
                 try:
                     logger.info('[hauled] Creating RMW update from EarthRanger gear: %s', er_gear.name)
-                    logger.info('[hauled] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
+                    logger.debug('[hauled] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)
@@ -605,7 +607,7 @@ class RmwHubAdapter:
                 gear_count += 1
                 try:
                     logger.info('[deployed] Creating RMW update from EarthRanger gear: %s', er_gear.name)
-                    logger.info('[deployed] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
+                    logger.debug('[deployed] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)

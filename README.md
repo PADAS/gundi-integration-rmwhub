@@ -263,7 +263,7 @@ Download produces **gear payloads** for the Buoy API (Earth Ranger). For each se
 
 | Condition | Reason | Log Level |
 |-----------|--------|-----------|
-| Invalid set_id or trap_id (non-UUID) | Cannot sync to Buoy API | WARNING |
+| Invalid set_id or trap_id (non-UUID or nil/reserved zero-prefixed UUID) | Cannot sync to Buoy API | WARNING |
 | Retrieved trap not in ER | No deployment history | INFO |
 | Same status and location in ER | Already synchronized | INFO |
 | Duplicate trap_id in same set | Collapsed to one device per id (see below) | WARNING |

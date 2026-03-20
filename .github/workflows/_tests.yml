@@ -17,7 +17,7 @@ jobs:
       - name: Constrain pip for pip-tools
         run: pip install 'pip<26'
       - name: Install pip tools
-        run: pip install pip-tools
+        run: pip install 'pip-tools==7.5.2'
       - name: Install compile dependencies
         run: pip-compile --output-file=requirements.txt requirements-base.in requirements-dev.in requirements.in
       - name: Install dependencies
