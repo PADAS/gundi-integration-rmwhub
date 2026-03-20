@@ -32,20 +32,35 @@ LOCATION_TOLERANCE_DEGREES = 0.0001
 ER_GEAR_PAGE_SIZE = 100
 
 
+def _parse_iso_to_utc(dt_str: str) -> Optional[datetime]:
+    """Parse an ISO 8601 string to a timezone-aware UTC datetime, or None on failure."""
+    try:
+        if dt_str.endswith("Z"):
+            dt_str = dt_str[:-1] + "+00:00"
+        dt = datetime.fromisoformat(dt_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
 def _latest_haul_time_iso(traps: List[Trap], gearset_when_updated_utc: Optional[str]) -> str:
     """
     Return the latest haul-related timestamp (retrieved or surface) among traps, as ISO string.
     If none exist, return gearset_when_updated_utc or current time in UTC.
     Used when hauling a whole gearset so devices without their own retrieved time get a consistent time.
     """
-    candidates: List[str] = []
+    candidates: List[datetime] = []
     for t in traps:
         for attr in ("retrieved_datetime_utc", "surface_datetime_utc"):
             v = getattr(t, attr, None)
             if v and isinstance(v, str) and "T" in v:
-                candidates.append(v)
+                parsed = _parse_iso_to_utc(v)
+                if parsed:
+                    candidates.append(parsed)
     if candidates:
-        return max(candidates)
+        return max(candidates).isoformat()
     if gearset_when_updated_utc and "T" in gearset_when_updated_utc:
         return gearset_when_updated_utc
     return datetime.now(timezone.utc).isoformat()
@@ -410,7 +425,9 @@ class RmwHubAdapter:
                 # Use gearset's when_updated_utc for last_updated/recorded_at when it's later than
                 # deploy time, so location-only (or set-move) updates are seen as updates by the API.
                 gearset_updated = getattr(gearset, "when_updated_utc", None) or ""
-                if gearset_updated and "T" in gearset_updated and gearset_updated > last_deployed:
+                gearset_updated_dt = _parse_iso_to_utc(gearset_updated) if gearset_updated else None
+                last_deployed_dt = _parse_iso_to_utc(last_deployed) if last_deployed else None
+                if gearset_updated_dt and last_deployed_dt and gearset_updated_dt > last_deployed_dt:
                     last_updated = gearset_updated
                     recorded_at = gearset_updated
                 else:

@@ -1,6 +1,6 @@
+import asyncio
 import json
 import logging
-import time
 from typing import List
 
 import httpx
@@ -81,8 +81,9 @@ class RmwHubClient:
 
         upload_data = {"format_version": 0, "api_key": self.api_key, "sets": sets}
 
-        logger.info("Uploading %d gear sets to RMW Hub API at %s", len(sets), url)
-        logger.info("Upload payload: %s", json.dumps(upload_data, default=str))
+        set_ids = [s.get("set_id", "unknown") for s in sets]
+        logger.info("Uploading %d gear sets to RMW Hub API at %s (set_ids=%s)", len(sets), url, set_ids)
+        logger.debug("Upload payload: %s", json.dumps({**upload_data, "api_key": "***"}, default=str))
 
         last_response: httpx.Response | None = None
         for attempt in range(1, UPLOAD_RETRY_COUNT + 1):
@@ -108,7 +109,7 @@ class RmwHubClient:
                     UPLOAD_RETRY_COUNT,
                     UPLOAD_RETRY_DELAY_SEC,
                 )
-                time.sleep(UPLOAD_RETRY_DELAY_SEC)
+                await asyncio.sleep(UPLOAD_RETRY_DELAY_SEC)
             else:
                 logger.error(
                     "Failed to upload data to RMW Hub API after %d attempts. Last error: %s - %s",
