@@ -4,7 +4,8 @@ import logging
 from typing import List
 
 import httpx
-import pytz
+from datetime import timezone
+
 from fastapi.encoders import jsonable_encoder
 
 from .types import GearSet
@@ -49,7 +50,7 @@ class RmwHubClient:
             "format_version": 0.1,
             "api_key": self.api_key,
             "max_sets": 10000,
-            "start_datetime_utc": start_datetime.astimezone(pytz.utc).isoformat(),  # Pull all data from the start date
+            "start_datetime_utc": start_datetime.astimezone(timezone.utc).isoformat(),  # Pull all data from the start date
         }
 
         url = self.rmw_url + "/search_hub/"
@@ -83,7 +84,7 @@ class RmwHubClient:
 
         set_ids = [s.get("set_id", "unknown") for s in sets]
         logger.info("Uploading %d gear sets to RMW Hub API at %s (set_ids=%s)", len(sets), url, set_ids)
-        logger.debug("Upload payload: %s", json.dumps({**upload_data, "api_key": "***"}, default=str))
+        logger.debug("Upload payload: %d sets, set_ids=%s", len(sets), set_ids)
 
         async with httpx.AsyncClient(timeout=self.default_timeout) as client:
             last_response: httpx.Response | None = None

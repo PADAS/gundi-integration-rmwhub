@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
-import pytz
+from dateutil import parser as dateutil_parser
 from gundi_core.schemas.v2.gundi import LogLevel
 
 from app.services.activity_logger import log_action_activity
@@ -33,27 +33,23 @@ LOCATION_TOLERANCE_DEGREES = 0.0001
 ER_GEAR_PAGE_SIZE = 100
 
 
-def _is_timezone_aware(dt_str: str) -> bool:
-    """Return True if an ISO 8601 datetime string contains a timezone offset or Z."""
-    if "T" not in dt_str:
-        return False
-    tz_part = dt_str[dt_str.find("T"):]
-    return "+" in tz_part or "-" in tz_part or "Z" in tz_part
-
-
 def _ensure_tz_utc(dt_str: str) -> str:
-    """If an ISO 8601 string is timezone-naive, append +00:00 (assume UTC)."""
-    if "T" in dt_str and not _is_timezone_aware(dt_str):
-        return dt_str + "+00:00"
+    """If an ISO 8601 string is timezone-naive, append +00:00 (assume UTC).
+
+    Uses proper datetime parsing to detect timezone awareness rather than
+    string heuristics, which correctly handles negative offsets like -04:00.
+    """
+    parsed = _parse_iso_to_utc(dt_str)
+    if parsed is not None:
+        return parsed.isoformat()
+    # Fallback: return original if unparseable
     return dt_str
 
 
 def _parse_iso_to_utc(dt_str: str) -> Optional[datetime]:
     """Parse an ISO 8601 string to a timezone-aware UTC datetime, or None on failure."""
     try:
-        if dt_str.endswith("Z"):
-            dt_str = dt_str[:-1] + "+00:00"
-        dt = datetime.fromisoformat(dt_str)
+        dt = dateutil_parser.isoparse(dt_str)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
@@ -382,7 +378,12 @@ class RmwHubAdapter:
                 # set membership. Sending only the new device can be ignored if the device already
                 # exists elsewhere in ER (same device_id/location).
                 if er_gear:
-                    all_traps_for_set, _ = deduplicate_traps_by_id(gearset.traps)
+                    # Send full list but exclude retrieved traps to avoid re-deploying hauled devices
+                    er_traps_for_deploy = [
+                        trap for trap in gearset.traps
+                        if getattr(trap, "status", None) != "retrieved"
+                    ]
+                    all_traps_for_set, _ = deduplicate_traps_by_id(er_traps_for_deploy)
                     traps_for_payload = all_traps_for_set
                 else:
                     traps_for_payload = traps_to_deploy
@@ -391,7 +392,7 @@ class RmwHubAdapter:
                     traps_for_payload,
                     device_status="deployed"
                 )
-                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_for_payload)} traps")
+                logger.info("Created deployment payload for gear set %s with %d traps", gearset.id, len(traps_for_payload))
                 logger.debug("Deployment payload for %s: %s", gearset.id, json.dumps(payload, default=str))
                 gear_payloads.append(payload)
 
@@ -405,7 +406,7 @@ class RmwHubAdapter:
                     device_status="hauled",
                     haul_fallback_time_utc=haul_fallback_time,
                 )
-                logger.info(f"Created haul payload for gear set {gearset.id} (whole set, {len(all_traps_deduped)} traps)")
+                logger.info("Created haul payload for gear set %s (whole set, %d traps)", gearset.id, len(all_traps_deduped))
                 logger.debug("Haul payload for %s: %s", gearset.id, json.dumps(payload, default=str))
                 gear_payloads.append(payload)
         
@@ -437,11 +438,12 @@ class RmwHubAdapter:
         """
         devices = []
         now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
 
         for trap in traps:
             # Get the appropriate timestamp based on status
             if device_status == "deployed":
-                last_deployed = trap.deploy_datetime_utc or now.isoformat()
+                last_deployed = trap.deploy_datetime_utc or now_iso
                 # Use gearset's when_updated_utc for last_updated/recorded_at when it's later than
                 # deploy time, so location-only (or set-move) updates are seen as updates by the API.
                 gearset_updated = getattr(gearset, "when_updated_utc", None) or ""
@@ -454,7 +456,7 @@ class RmwHubAdapter:
                     last_updated = last_deployed
                     recorded_at = last_deployed
             else:  # hauled
-                last_deployed = trap.deploy_datetime_utc or now.isoformat()
+                last_deployed = trap.deploy_datetime_utc or now_iso
                 if trap.retrieved_datetime_utc or trap.surface_datetime_utc:
                     last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
                     recorded_at = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_updated
@@ -820,10 +822,7 @@ class RmwHubAdapter:
         """
         Convert the datetime string to UTC format.
         """
-        if datetime_str.endswith("Z"):
-            datetime_str = datetime_str[:-1] + "+00:00"
-        datetime_obj = datetime.fromisoformat(datetime_str)
-        datetime_obj = datetime_obj.astimezone(pytz.utc)
-        formatted_datetime = datetime_obj.isoformat()
-
-        return formatted_datetime
+        dt = dateutil_parser.isoparse(datetime_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()

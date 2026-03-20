@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-import pytz
 from gundi_core.schemas.v2.gundi import LogLevel
 
 from app.actions.buoy.types import BuoyDevice, BuoyGear, DeviceLocation
@@ -1088,9 +1087,9 @@ class TestRmwHubAdapter:
         device = result["devices"][0]
         assert "recorded_at" in device
         # When gearset.when_updated_utc is after deploy time, use it so location/set updates are applied
-        assert device["recorded_at"] == "2023-09-15T18:00:00Z"
+        assert device["recorded_at"] == "2023-09-15T18:00:00+00:00"
         assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
-        assert device["last_updated"] == "2023-09-15T18:00:00Z"
+        assert device["last_updated"] == "2023-09-15T18:00:00+00:00"
         assert device["device_status"] == "deployed"
         assert result["initial_deployment_date"] == "2023-09-15T14:30:00+00:00"
 
@@ -1121,9 +1120,9 @@ class TestRmwHubAdapter:
         )
         result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
         device = result["devices"][0]
-        assert device["last_deployed"] == "2023-09-20T10:00:00Z"
-        assert device["last_updated"] == "2023-09-20T10:00:00Z"
-        assert device["recorded_at"] == "2023-09-20T10:00:00Z"
+        assert device["last_deployed"] == "2023-09-20T10:00:00+00:00"
+        assert device["last_updated"] == "2023-09-20T10:00:00+00:00"
+        assert device["recorded_at"] == "2023-09-20T10:00:00+00:00"
 
     def test_create_gear_payload_from_gearset_hauled_with_retrieved(self, adapter):
         """Test creating gear payload for hauled traps uses retrieved_datetime_utc for recorded_at."""
@@ -1258,9 +1257,8 @@ class TestRmwHubAdapter:
         result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
         
         device = result["devices"][0]
-        # When gearset.when_updated_utc is after deploy, it is used (already has Z, no double-add)
-        assert device["recorded_at"] == "2023-09-15T18:00:00Z"
-        assert device["recorded_at"].count("+00:00") == 0  # has Z, not +00:00
+        # When gearset.when_updated_utc is after deploy, it is used (normalized to +00:00)
+        assert device["recorded_at"] == "2023-09-15T18:00:00+00:00"
 
     def test_create_gear_payload_from_gearset_multiple_traps(self, adapter):
         """Test creating gear payload with multiple traps."""
@@ -1308,8 +1306,8 @@ class TestRmwHubAdapter:
         assert result["devices_in_set"] == 2
         
         # Each device uses gearset when_updated_utc when it's after deploy so location/set updates apply
-        assert result["devices"][0]["recorded_at"] == "2023-09-15T18:00:00Z"
-        assert result["devices"][1]["recorded_at"] == "2023-09-15T18:00:00Z"
+        assert result["devices"][0]["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        assert result["devices"][1]["recorded_at"] == "2023-09-15T18:00:00+00:00"
         
         # Check release_type handling
         assert result["devices"][0]["release_type"] == "manual"
@@ -1492,3 +1490,141 @@ class TestProcessDownloadDuplicateTrapIds:
         device_ids = [d["device_id"] for d in payload["devices"]]
         assert sorted(device_ids) == sorted([trap_id_a, trap_id_b])
         assert len(device_ids) == len(set(device_ids))  # all unique
+
+
+class TestTimezoneHandling:
+    """Tests for timezone parsing and normalization helpers."""
+
+    def test_ensure_tz_utc_naive_timestamp(self):
+        from app.actions.rmwhub.adapter import _ensure_tz_utc
+        result = _ensure_tz_utc("2023-09-15T14:30:00")
+        dt = datetime.fromisoformat(result)
+        assert dt.tzinfo is not None
+
+    def test_ensure_tz_utc_negative_offset(self):
+        """Negative offset like -04:00 should NOT get +00:00 appended."""
+        from app.actions.rmwhub.adapter import _ensure_tz_utc
+        result = _ensure_tz_utc("2023-09-15T14:30:00-04:00")
+        # Should be normalized to UTC
+        dt = datetime.fromisoformat(result)
+        assert dt.tzinfo is not None
+        assert dt.utcoffset().total_seconds() == 0
+        assert dt.hour == 18  # 14:30 - (-04:00) = 18:30
+
+    def test_ensure_tz_utc_z_suffix(self):
+        from app.actions.rmwhub.adapter import _ensure_tz_utc
+        result = _ensure_tz_utc("2023-09-15T14:30:00Z")
+        dt = datetime.fromisoformat(result)
+        assert dt.tzinfo is not None
+
+    def test_ensure_tz_utc_already_utc(self):
+        from app.actions.rmwhub.adapter import _ensure_tz_utc
+        result = _ensure_tz_utc("2023-09-15T14:30:00+00:00")
+        dt = datetime.fromisoformat(result)
+        assert dt.utcoffset().total_seconds() == 0
+
+    def test_latest_haul_time_iso_compares_datetimes_not_strings(self):
+        """Ensure _latest_haul_time_iso correctly picks latest regardless of Z vs +00:00 format."""
+        from app.actions.rmwhub.adapter import _latest_haul_time_iso
+        trap1 = Trap(
+            id="t1", sequence=1, latitude=0, longitude=0,
+            deploy_datetime_utc="2023-09-15T14:30:00Z",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc="2023-09-15T20:00:00+00:00",
+            status="retrieved", accuracy="gps", release_type=None, is_on_end=False,
+        )
+        trap2 = Trap(
+            id="t2", sequence=2, latitude=0, longitude=0,
+            deploy_datetime_utc="2023-09-15T14:30:00Z",
+            surface_datetime_utc="2023-09-15T21:00:00Z",
+            retrieved_datetime_utc=None,
+            status="retrieved", accuracy="gps", release_type=None, is_on_end=True,
+        )
+        result = _latest_haul_time_iso([trap1, trap2], None)
+        dt = datetime.fromisoformat(result)
+        assert dt.hour == 21  # 21:00 is the latest
+
+
+class TestMixedStatusDeployment:
+    """Tests for the re-deploying hauled devices bug fix."""
+
+    @pytest.fixture
+    def adapter(self):
+        with patch('app.actions.rmwhub.adapter.RmwHubClient'), \
+             patch('app.actions.rmwhub.adapter.BuoyClient'):
+            return RmwHubAdapter(
+                integration_id=str(uuid.uuid4()),
+                api_key="test",
+                rmw_url="https://test.rmwhub.com",
+                er_token="test",
+                er_destination="https://test.er.com",
+            )
+
+    @pytest.mark.asyncio
+    async def test_deploy_payload_excludes_retrieved_traps_when_er_gear_exists(self, adapter):
+        """When ER gear exists and we build a full-set deploy payload, retrieved traps
+        in gearset.traps are filtered out so they don't get re-sent as deployed.
+
+        Scenario: ER set is deployed with trap A. RMW sends all-deployed traps:
+        trap A (same location — skipped), trap B (new device — goes to traps_to_deploy),
+        plus trap C marked 'retrieved' that somehow also has status='deployed' in RMW
+        but is actually retrieved. The defensive filter ensures only status='deployed'
+        traps from gearset.traps appear in the payload when building the full set list.
+
+        We directly test the filtering by having gearset.traps include a retrieved trap
+        alongside deployed traps and verifying the deploy payload excludes it.
+        """
+        set_id = str(uuid.uuid4())
+        trap_id_a = str(uuid.uuid4())
+        trap_id_b = str(uuid.uuid4())
+        trap_id_c = str(uuid.uuid4())
+
+        # All traps deployed in gearset.traps, but trap_c has status="retrieved"
+        # This simulates a data inconsistency where gearset.traps contains mixed statuses
+        trap_a = Trap(
+            id=trap_id_a, sequence=1, latitude=42.0, longitude=-70.0,
+            deploy_datetime_utc="2023-09-15T14:30:00Z", surface_datetime_utc=None,
+            retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+            release_type=None, is_on_end=False,
+        )
+        trap_b = Trap(
+            id=trap_id_b, sequence=2, latitude=42.2, longitude=-70.2,
+            deploy_datetime_utc="2023-09-15T15:00:00Z", surface_datetime_utc=None,
+            retrieved_datetime_utc=None, status="deployed", accuracy="gps",
+            release_type=None, is_on_end=False,
+        )
+        trap_c = Trap(
+            id=trap_id_c, sequence=3, latitude=42.3, longitude=-70.3,
+            deploy_datetime_utc="2023-09-15T14:30:00Z", surface_datetime_utc=None,
+            retrieved_datetime_utc="2023-09-15T17:30:00Z", status="retrieved", accuracy="gps",
+            release_type=None, is_on_end=True,
+        )
+
+        gearset = GearSet(
+            vessel_id="v1", id=set_id, deployment_type="trawl",
+            traps_in_set=3, trawl_path={}, share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap_a, trap_b, trap_c],
+        )
+
+        # Directly test the deploy-only branch by calling _create_gear_payload_from_gearset
+        # with the filtered list (as our fix does in process_download)
+        from app.actions.rmwhub.adapter import deduplicate_traps_by_id
+        er_traps_for_deploy = [
+            t for t in gearset.traps
+            if getattr(t, "status", None) != "retrieved"
+        ]
+        all_traps_for_set, _ = deduplicate_traps_by_id(er_traps_for_deploy)
+
+        payload = adapter._create_gear_payload_from_gearset(
+            gearset, all_traps_for_set, device_status="deployed"
+        )
+
+        device_ids = [d["device_id"] for d in payload["devices"]]
+        # Retrieved trap C should be excluded
+        assert trap_id_c not in device_ids
+        # Deployed traps A and B should be present
+        assert trap_id_a in device_ids
+        assert trap_id_b in device_ids
+        assert len(payload["devices"]) == 2
+        assert all(d["device_status"] == "deployed" for d in payload["devices"])

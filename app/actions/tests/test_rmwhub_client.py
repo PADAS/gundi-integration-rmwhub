@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from zoneinfo import ZoneInfo
+
 import httpx
-import pytz
 from fastapi.encoders import jsonable_encoder
 
 from app.actions.rmwhub.client import RmwHubClient
@@ -23,7 +24,7 @@ class TestRmwHubClient:
     @pytest.fixture
     def sample_datetime(self):
         """Fixture for sample datetime with timezone."""
-        return datetime(2023, 9, 15, 14, 30, 0, tzinfo=pytz.timezone('US/Eastern'))
+        return datetime(2023, 9, 15, 14, 30, 0, tzinfo=ZoneInfo('US/Eastern'))
     
     @pytest.fixture
     def sample_trap(self):
@@ -113,7 +114,7 @@ class TestRmwHubClient:
             "format_version": 0.1,
             "api_key": "test_api_key",
             "max_sets": 10000,
-            "start_datetime_utc": sample_datetime.astimezone(pytz.utc).isoformat(),
+            "start_datetime_utc": sample_datetime.astimezone(timezone.utc).isoformat(),
         }
         
         mock_client.post.assert_called_once_with(
@@ -458,7 +459,7 @@ class TestRmwHubClient:
     async def test_search_hub_datetime_timezone_conversion(self, client):
         """Test that datetime is properly converted to UTC."""
         # Create a datetime with a specific timezone
-        eastern_tz = pytz.timezone('US/Eastern')
+        eastern_tz = ZoneInfo('US/Eastern')
         local_datetime = datetime(2023, 9, 15, 10, 30, 0, tzinfo=eastern_tz)
         
         with patch('httpx.AsyncClient') as mock_client_class:
@@ -480,7 +481,7 @@ class TestRmwHubClient:
             json_data = call_args[1]["json"]
             
             # Verify the datetime was converted to UTC
-            expected_utc_iso = local_datetime.astimezone(pytz.utc).isoformat()
+            expected_utc_iso = local_datetime.astimezone(timezone.utc).isoformat()
             assert json_data["start_datetime_utc"] == expected_utc_iso
 
     @pytest.mark.asyncio
@@ -530,3 +531,64 @@ class TestRmwHubClient:
 
         # Verify the exception message
         assert "Connection timed out" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    @patch('app.actions.rmwhub.client.asyncio.sleep', new_callable=AsyncMock)
+    @patch('httpx.AsyncClient')
+    async def test_upload_data_retry_then_success(self, mock_client_class, mock_sleep, client, sample_gearset):
+        """Test upload_data retries on 502 and succeeds on second attempt."""
+        mock_502 = MagicMock()
+        mock_502.status_code = 502
+        mock_502.content = b'Bad Gateway'
+
+        mock_200 = MagicMock()
+        mock_200.status_code = 200
+        mock_200.content = b'{"status": "success"}'
+
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = [mock_502, mock_200]
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        result = await client.upload_data([sample_gearset])
+
+        assert result.status_code == 200
+        assert mock_client.post.call_count == 2
+        mock_sleep.assert_called_once_with(5)
+
+    @pytest.mark.asyncio
+    @patch('app.actions.rmwhub.client.asyncio.sleep', new_callable=AsyncMock)
+    @patch('httpx.AsyncClient')
+    @patch('app.actions.rmwhub.client.logger')
+    async def test_upload_data_retry_exhausted(self, mock_logger, mock_client_class, mock_sleep, client, sample_gearset):
+        """Test upload_data fails after exhausting all retries on 503."""
+        mock_503 = MagicMock()
+        mock_503.status_code = 503
+        mock_503.content = b'Service Unavailable'
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_503
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        result = await client.upload_data([sample_gearset])
+
+        assert result.status_code == 503
+        assert mock_client.post.call_count == 3  # UPLOAD_RETRY_COUNT
+        assert mock_sleep.call_count == 2  # retries - 1
+        mock_logger.error.assert_called()
+
+    @pytest.mark.asyncio
+    @patch('httpx.AsyncClient')
+    async def test_upload_data_non_retryable_error(self, mock_client_class, client, sample_gearset):
+        """Test upload_data does not retry on non-retryable status codes like 400."""
+        mock_400 = MagicMock()
+        mock_400.status_code = 400
+        mock_400.content = b'Bad Request'
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_400
+        mock_client_class.return_value.__aenter__.return_value = mock_client
+
+        result = await client.upload_data([sample_gearset])
+
+        assert result.status_code == 400
+        assert mock_client.post.call_count == 1  # No retries

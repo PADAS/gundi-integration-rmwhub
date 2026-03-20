@@ -273,7 +273,7 @@ Download produces **gear payloads** for the Buoy API (Earth Ranger). For each se
 **Filter Implementation** (overview):
 ```python
 async def process_download(self, rmw_sets: List[GearSet]) -> List[Dict]:
-    gears = await self.gear_client.get_all_gears()
+    gears = await self.gear_client.get_all_gears(page_size=ER_GEAR_PAGE_SIZE)
     gear_id_to_set_mapping = {str(gear.id).lower(): gear for gear in gears}
 
     gear_payloads = []
