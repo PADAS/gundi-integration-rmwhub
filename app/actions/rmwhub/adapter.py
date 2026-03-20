@@ -34,10 +34,12 @@ ER_GEAR_PAGE_SIZE = 100
 
 
 def _ensure_tz_utc(dt_str: str) -> str:
-    """If an ISO 8601 string is timezone-naive, append +00:00 (assume UTC).
+    """Normalize an ISO 8601 timestamp string to UTC and return it as ISO.
 
-    Uses proper datetime parsing to detect timezone awareness rather than
-    string heuristics, which correctly handles negative offsets like -04:00.
+    The string is parsed using dateutil; if it is timezone-naive, it is
+    interpreted as UTC. If it has any explicit offset (e.g. -04:00), it is
+    converted to the equivalent UTC time. If parsing fails, the original
+    string is returned unchanged.
     """
     parsed = _parse_iso_to_utc(dt_str)
     if parsed is not None:

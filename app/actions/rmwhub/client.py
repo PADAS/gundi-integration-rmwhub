@@ -4,7 +4,7 @@ import logging
 from typing import List
 
 import httpx
-from datetime import timezone
+from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
 
@@ -40,7 +40,7 @@ class RmwHubClient:
             read=read_timeout
         )
 
-    async def search_hub(self, start_datetime: str) -> dict:
+    async def search_hub(self, start_datetime: datetime) -> dict:
         """
         Downloads data from the RMWHub API using the search_hub endpoint.
         ref: https://ropeless.network/api/docs#/Download
