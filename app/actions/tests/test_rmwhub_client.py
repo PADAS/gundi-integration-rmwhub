@@ -1,10 +1,8 @@
 import pytest
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi.encoders import jsonable_encoder
@@ -24,7 +22,7 @@ class TestRmwHubClient:
     @pytest.fixture
     def sample_datetime(self):
         """Fixture for sample datetime with timezone."""
-        return datetime(2023, 9, 15, 14, 30, 0, tzinfo=ZoneInfo('US/Eastern'))
+        return datetime(2023, 9, 15, 14, 30, 0, tzinfo=timezone(timedelta(hours=-4)))
     
     @pytest.fixture
     def sample_trap(self):
@@ -459,7 +457,7 @@ class TestRmwHubClient:
     async def test_search_hub_datetime_timezone_conversion(self, client):
         """Test that datetime is properly converted to UTC."""
         # Create a datetime with a specific timezone
-        eastern_tz = ZoneInfo('US/Eastern')
+        eastern_tz = timezone(timedelta(hours=-4))
         local_datetime = datetime(2023, 9, 15, 10, 30, 0, tzinfo=eastern_tz)
         
         with patch('httpx.AsyncClient') as mock_client_class:
