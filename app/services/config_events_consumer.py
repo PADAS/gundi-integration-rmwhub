@@ -53,7 +53,11 @@ async def handle_action_config_updated_event(event: ActionConfigUpdated):
         action_id=action_id
     )
     for key, value in event_data.changes.items():
-        setattr(action_config, key, value)
+        if key == "data" and isinstance(value, dict):
+            # Merge changes into existing data instead of replacing
+            action_config.data.update(value)
+        else:
+            setattr(action_config, key, value)
     await config_manager.set_action_configuration(
         integration_id=integration_id,
         action_id=action_id,
