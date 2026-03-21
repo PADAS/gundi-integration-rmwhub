@@ -196,7 +196,7 @@ class TestRmwHubAdapter:
         
         adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
         
-        result = await adapter.download_data("2023-09-15T10:00:00Z")
+        result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
         
         assert len(result) == 1
         assert isinstance(result[0], GearSet)
@@ -211,9 +211,9 @@ class TestRmwHubAdapter:
         mock_response = {"sets": []}
         adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
 
-        await adapter.download_data("2023-09-15T10:00:00Z", status="deployed")
+        await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="deployed")
 
-        adapter.rmw_client.search_hub.assert_called_once_with("2023-09-15T10:00:00Z")
+        adapter.rmw_client.search_hub.assert_called_once_with(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
 
     @pytest.mark.asyncio
     async def test_download_data_no_sets(self, adapter):
@@ -222,7 +222,7 @@ class TestRmwHubAdapter:
         adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
         
         with patch('app.actions.rmwhub.adapter.logger') as mock_logger:
-            result = await adapter.download_data("2023-09-15T10:00:00Z")
+            result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
             
             assert result == []
             mock_logger.error.assert_called_once()
@@ -234,7 +234,7 @@ class TestRmwHubAdapter:
         adapter.rmw_client.search_hub = AsyncMock(return_value=error_response)
         
         with patch('app.actions.rmwhub.adapter.logger') as mock_logger:
-            result = await adapter.download_data("2023-09-15T10:00:00Z")
+            result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
             
             assert result == []
             mock_logger.error.assert_called_once()
@@ -816,7 +816,7 @@ class TestRmwHubAdapter:
         
         adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
         
-        result = await adapter.download_data("2023-09-15T10:00:00Z", status="deployed")
+        result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="deployed")
         
         assert len(result) == 1
         assert len(result[0].traps) == 1  # Only deployed traps should remain
@@ -867,7 +867,7 @@ class TestRmwHubAdapter:
         
         adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
         
-        result = await adapter.download_data("2023-09-15T10:00:00Z", status="hauled")
+        result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="hauled")
         
         assert len(result) == 1  # Should include the set with all hauled traps
 

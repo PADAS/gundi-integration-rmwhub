@@ -510,28 +510,15 @@ class RmwHubAdapter:
         
         # Add initial_deployment_date only for new deployments
         if device_status == "deployed" and traps:
-            # Use the earliest deployment time from the traps
-            deployment_times = [trap.deploy_datetime_utc for trap in traps if trap.deploy_datetime_utc]
-            if deployment_times:
-                earliest_deployment = min(deployment_times)
-            else:
-                earliest_deployment = None
-            
-            if earliest_deployment:
-                if isinstance(earliest_deployment, str):
-                    earliest_deployment = earliest_deployment
-                elif isinstance(earliest_deployment, datetime):
-                    earliest_deployment = earliest_deployment.isoformat()
-                else:
-                    earliest_deployment = str(earliest_deployment)
-                
-                
-            # If earliest_deployment is timezone naive, assume UTC
-            if earliest_deployment:
-                earliest_deployment = _ensure_tz_utc(earliest_deployment)
-
-            if earliest_deployment:
-                payload["initial_deployment_date"] = earliest_deployment
+            # Parse deployment times to UTC datetimes for correct comparison
+            parsed_times = []
+            for trap in traps:
+                if trap.deploy_datetime_utc:
+                    dt = _parse_iso_to_utc(str(trap.deploy_datetime_utc))
+                    if dt:
+                        parsed_times.append(dt)
+            if parsed_times:
+                payload["initial_deployment_date"] = min(parsed_times).isoformat()
         
         return payload
 

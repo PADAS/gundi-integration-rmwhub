@@ -65,7 +65,7 @@ class RmwHubClient:
 
         return response.text
 
-    async def upload_data(self, updates: List[GearSet]) -> Optional[httpx.Response]:
+    async def upload_data(self, updates: List[GearSet]) -> httpx.Response:
         """
         Upload data to the RMWHub API using the upload_data endpoint.
         Retries on 502/503/504 (transient gateway/server errors).
