@@ -2,10 +2,10 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
-import pytz
+from dateutil import parser as dateutil_parser
 from gundi_core.schemas.v2.gundi import LogLevel
 
 from app.services.activity_logger import log_action_activity
@@ -28,6 +28,57 @@ RMWHUB_MANUFACTURER = "rmwhub"
 # location changes.
 LOCATION_TOLERANCE_DEGREES = 0.0001
 
+# Page size for iterating over gears in EarthRanger.
+# Reduced from the default 1000 to mitigate timeouts and memory usage during sync.
+ER_GEAR_PAGE_SIZE = 100
+
+
+def _ensure_tz_utc(dt_str: str) -> str:
+    """Normalize an ISO 8601 timestamp string to UTC and return it as ISO.
+
+    The string is parsed using dateutil; if it is timezone-naive, it is
+    interpreted as UTC. If it has any explicit offset (e.g. -04:00), it is
+    converted to the equivalent UTC time. If parsing fails, the original
+    string is returned unchanged.
+    """
+    parsed = _parse_iso_to_utc(dt_str)
+    if parsed is not None:
+        return parsed.isoformat()
+    # Fallback: return original if unparseable
+    return dt_str
+
+
+def _parse_iso_to_utc(dt_str: str) -> Optional[datetime]:
+    """Parse an ISO 8601 string to a timezone-aware UTC datetime, or None on failure."""
+    try:
+        dt = dateutil_parser.isoparse(dt_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _latest_haul_time_iso(traps: List[Trap], gearset_when_updated_utc: Optional[str]) -> str:
+    """
+    Return the latest haul-related timestamp (retrieved or surface) among traps, as ISO string.
+    If none exist, return gearset_when_updated_utc or current time in UTC.
+    Used when hauling a whole gearset so devices without their own retrieved time get a consistent time.
+    """
+    candidates: List[datetime] = []
+    for t in traps:
+        for attr in ("retrieved_datetime_utc", "surface_datetime_utc"):
+            v = getattr(t, attr, None)
+            if v and isinstance(v, str) and "T" in v:
+                parsed = _parse_iso_to_utc(v)
+                if parsed:
+                    candidates.append(parsed)
+    if candidates:
+        return max(candidates).isoformat()
+    if gearset_when_updated_utc and "T" in gearset_when_updated_utc:
+        return gearset_when_updated_utc
+    return datetime.now(timezone.utc).isoformat()
+
 
 def is_valid_uuid(uuid_string):
     try:
@@ -35,6 +86,58 @@ def is_valid_uuid(uuid_string):
         return True
     except ValueError:
         return False
+
+
+def is_valid_uuid_for_buoy(uuid_string):
+    """
+    Return True only if the UUID is valid and acceptable by the Buoy API.
+    The Buoy API does not allow nil or reserved (zero-prefix) UUIDs;
+    we skip gearsets/traps using these so we don't send payloads that will be rejected.
+    """
+    try:
+        u = uuid.UUID(str(uuid_string))
+    except ValueError:
+        return False
+    # Reject nil UUID (all 128 bits zero)
+    if u.int == 0:
+        return False
+    # Reject UUIDs with first 96 bits zero (00000000-0000-0000-0000-0000xxxxxxxx)
+    if u.int < (1 << 32):
+        return False
+    return True
+
+
+def deduplicate_traps_by_id(traps: List[Trap]) -> Tuple[List[Trap], List[Tuple[str, int]]]:
+    """
+    Ensure at most one trap per trap_id. Duplicate trap_ids in a set (e.g. from RMW Hub
+    data) would produce duplicate device_ids in the Buoy payload, which is invalid.
+
+    Strategy: keep one representative trap per trap_id. When duplicates exist, keep the
+    trap with the lowest sequence number (first in line); if sequences are equal, keep
+    the first occurrence. Logs a warning for each trap_id that had duplicates.
+
+    Returns:
+        (deduplicated list of traps, list of (trap_id, duplicate_count) for logging)
+    """
+    by_id: Dict[str, List[Trap]] = {}
+    for trap in traps:
+        key = str(trap.id).lower()
+        by_id.setdefault(key, []).append(trap)
+
+    deduplicated = []
+    duplicate_reports: List[Tuple[str, int]] = []
+    for trap_id, group in by_id.items():
+        if len(group) > 1:
+            duplicate_reports.append((trap_id, len(group) - 1))
+            # Keep one: lowest sequence first, then first occurrence in list (stable)
+            chosen = min(enumerate(group), key=lambda i_t: (i_t[1].sequence, i_t[0]))[1]
+            deduplicated.append(chosen)
+        else:
+            deduplicated.append(group[0])
+
+    # Restore original order by sequence so payload order is stable
+    deduplicated.sort(key=lambda t: t.sequence)
+    return deduplicated, duplicate_reports
 
 class RmwHubAdapter:
     def __init__(
@@ -73,7 +176,7 @@ class RmwHubAdapter:
         return uuid.UUID(self.integration_id)
 
     async def download_data(
-        self, start_datetime: str, status: str = "all"
+        self, start_datetime: datetime, status: str = "all"
     ) -> List[GearSet]:
         """
         Downloads data from the RMW Hub API using the search_hub endpoint.
@@ -149,13 +252,22 @@ class RmwHubAdapter:
         Process the sets from the RMW Hub API and convert them to gear payloads.
         Returns a list of gear payloads ready to be sent to the Buoy API.
         """
-        gears = await self.gear_client.get_all_gears()
+        gears = await self.gear_client.get_all_gears(page_size=ER_GEAR_PAGE_SIZE)
         logger.info(f"Found existing {len(gears)} in EarthRanger")
 
         gear_id_to_set_mapping = {
             str(gear.id).lower(): gear
             for gear in gears
         }
+
+        # Map each device_id to the set_id(s) it belongs to in ER. Used to detect and log
+        # when a device has moved between sets in RMW Hub (e.g. correction after mistaken haul).
+        device_id_to_er_set_ids: Dict[str, List[str]] = {}
+        for gear in gears:
+            set_id_lower = str(gear.id).lower()
+            for device in gear.devices:
+                dev_id = str(device.device_id).lower()
+                device_id_to_er_set_ids.setdefault(dev_id, []).append(set_id_lower)
 
         # Deduplicate gears by ID (case-insensitive), keeping only the most recent one
         unique_sets = {}
@@ -166,7 +278,13 @@ class RmwHubAdapter:
             else:
                 # Keep the gear with the later last_updated timestamp
                 existing_gear = unique_sets[set_id_lower]
-                if rmw_set.when_updated_utc > existing_gear.when_updated_utc:
+                new_dt = _parse_iso_to_utc(rmw_set.when_updated_utc or "")
+                old_dt = _parse_iso_to_utc(existing_gear.when_updated_utc or "")
+                if new_dt and old_dt:
+                    if new_dt > old_dt:
+                        unique_sets[set_id_lower] = rmw_set
+                elif new_dt and not old_dt:
+                    # Prefer the set with a parseable timestamp
                     unique_sets[set_id_lower] = rmw_set
         
         rmw_sets = list(unique_sets.values())
@@ -181,8 +299,8 @@ class RmwHubAdapter:
             traps_to_deploy = []
             traps_to_haul = []
             er_gear = gear_id_to_set_mapping.get(str(gearset.id).lower())
-            if not is_valid_uuid(gearset.id) or any(not is_valid_uuid(trap.id) for trap in gearset.traps):
-                logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs.")
+            if not is_valid_uuid_for_buoy(gearset.id) or any(not is_valid_uuid_for_buoy(trap.id) for trap in gearset.traps):
+                logger.warning(f"Skipping gearset {gearset.id} due to invalid UUIDs (Buoy API does not allow nil/reserved UUIDs).")
                 continue
             
             # Create a mapping of device_id to device for quick lookup
@@ -199,7 +317,9 @@ class RmwHubAdapter:
                 
                 if er_gear:
                     er_device = er_device_mapping.get(str(trap.id).lower())
-                    
+                    # Only skip when the device is on *this* set in ER with matching status/location.
+                    # Devices that moved from another set are not in er_device_mapping for this set,
+                    # so they are included in traps_to_deploy and sent (full set payload when set exists).
                     if er_device:
                         # Check if status matches
                         status_matches = (trap.status == "deployed" and er_gear.status == "deployed") or \
@@ -219,7 +339,18 @@ class RmwHubAdapter:
                         else:
                             logger.info(f"Trap ({trap.id}) has different status or location from ER Device (status_matches={status_matches}, location_matches={location_matches})")
                     else:
-                        logger.info(f"Trap ({trap.id}) not found in ER gear devices, will be processed")
+                        # Trap not on this set in ER — will be processed (e.g. new device or device moved from another set).
+                        other_sets = [
+                            s for s in device_id_to_er_set_ids.get(str(trap.id).lower(), [])
+                            if s != str(gearset.id).lower()
+                        ]
+                        if other_sets:
+                            logger.info(
+                                "Trap (%s) is on set(s) %s in ER but RMW has it on set %s; including in payload (device moved between sets)",
+                                trap.id, other_sets, gearset.id,
+                            )
+                        else:
+                            logger.info(f"Trap ({trap.id}) not found in ER gear devices, will be processed")
                 
                 # Separate traps by status
                 if trap.status == "deployed":
@@ -229,37 +360,74 @@ class RmwHubAdapter:
                     logger.info(f"Preparing trap ({trap.id}) for hauling")
                     traps_to_haul.append(trap)
             
-            # Create gear payloads for deployment
+            # Deduplicate by trap_id so we never send duplicate device_ids in one set.
+            # RMW Hub can sometimes return the same trap_id multiple times in a set (e.g. duplicate rows).
             if traps_to_deploy:
+                traps_to_deploy, dup_deploy = deduplicate_traps_by_id(traps_to_deploy)
+                for trap_id, dropped in dup_deploy:
+                    logger.warning(
+                        "Gear set %s: deduplicated traps by trap_id; kept one of %d entries for trap_id=%s (Buoy API expects unique device_id per set)",
+                        gearset.id, dropped + 1, trap_id,
+                    )
+            if traps_to_haul:
+                traps_to_haul, dup_haul = deduplicate_traps_by_id(traps_to_haul)
+                for trap_id, dropped in dup_haul:
+                    logger.warning(
+                        "Gear set %s: deduplicated traps by trap_id; kept one of %d entries for trap_id=%s (Buoy API expects unique device_id per set)",
+                        gearset.id, dropped + 1, trap_id,
+                    )
+            
+            # Create gear payloads for deployment
+            if traps_to_deploy and not traps_to_haul:
+                # When the set already exists in ER and we have new traps to deploy (e.g. device moved
+                # from another set), send the full trap list for this set so the Buoy API can update
+                # set membership. Sending only the new device can be ignored if the device already
+                # exists elsewhere in ER (same device_id/location).
+                if er_gear:
+                    # Send full list but exclude retrieved traps to avoid re-deploying hauled devices
+                    er_traps_for_deploy = [
+                        trap for trap in gearset.traps
+                        if getattr(trap, "status", None) != "retrieved"
+                    ]
+                    all_traps_for_set, _ = deduplicate_traps_by_id(er_traps_for_deploy)
+                    traps_for_payload = all_traps_for_set
+                else:
+                    traps_for_payload = traps_to_deploy
                 payload = self._create_gear_payload_from_gearset(
                     gearset,
-                    traps_to_deploy,
+                    traps_for_payload,
                     device_status="deployed"
                 )
-                logger.info(f"Created deployment payload for gear set {gearset.id} with {len(traps_to_deploy)} traps: {json.dumps(payload, default=str)}")
+                logger.info("Created deployment payload for gear set %s with %d traps", gearset.id, len(traps_for_payload))
+                logger.debug("Deployment payload for %s: %s", gearset.id, json.dumps(payload, default=str))
                 gear_payloads.append(payload)
-            
-            # Create gear payloads for hauling
+
+            # Create gear payloads for hauling: if any device is marked for haul, haul the whole gearset in Buoy
             if traps_to_haul:
+                all_traps_deduped, _ = deduplicate_traps_by_id(gearset.traps)
+                haul_fallback_time = _latest_haul_time_iso(all_traps_deduped, getattr(gearset, "when_updated_utc", None))
                 payload = self._create_gear_payload_from_gearset(
                     gearset,
-                    traps_to_haul,
-                    device_status="hauled"
+                    all_traps_deduped,
+                    device_status="hauled",
+                    haul_fallback_time_utc=haul_fallback_time,
                 )
-                logger.info(f"Created haul payload for gear set {gearset.id} with {len(traps_to_haul)} traps: {json.dumps(payload, default=str)}")
+                logger.info("Created haul payload for gear set %s (whole set, %d traps)", gearset.id, len(all_traps_deduped))
+                logger.debug("Haul payload for %s: %s", gearset.id, json.dumps(payload, default=str))
                 gear_payloads.append(payload)
         
         logger.info(f"Skipped {len(skipped_retrieved_traps_missing_in_er)} retrieved traps missing in EarthRanger: {skipped_retrieved_traps_missing_in_er}")
         logger.info(f"Skipped matching {len(matched_status_traps)} traps with same status in EarthRanger: {matched_status_traps}")
         logger.info(f"Created {len(gear_payloads)} gear payloads to send to Buoy API")
-        logger.info(f"Gear payloads: {json.dumps(gear_payloads, default=str)}")
+        logger.debug("Gear payloads: %s", json.dumps(gear_payloads, default=str))
         return gear_payloads
 
     def _create_gear_payload_from_gearset(
         self,
         gearset: GearSet,
         traps: List[Trap],
-        device_status: str
+        device_status: str,
+        haul_fallback_time_utc: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a gear payload from a RMW Hub gearset in the format expected by the Buoy API.
@@ -268,37 +436,61 @@ class RmwHubAdapter:
             gearset: The RMW Hub gear set
             traps: List of traps to include in this payload
             device_status: Status of the devices (deployed/hauled)
+            haul_fallback_time_utc: When hauling a whole set, use this for last_updated/recorded_at
+                for traps that have no retrieved_datetime_utc or surface_datetime_utc.
         
         Returns:
             Dict in the format expected by /api/v1.0/gear/ POST endpoint
         """
         devices = []
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
 
         for trap in traps:
             # Get the appropriate timestamp based on status
             if device_status == "deployed":
-                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
-                last_updated = last_deployed
+                last_deployed = trap.deploy_datetime_utc or now_iso
+                # Use gearset's when_updated_utc for last_updated/recorded_at when it's later than
+                # deploy time, so location-only (or set-move) updates are seen as updates by the API.
+                gearset_updated = getattr(gearset, "when_updated_utc", None) or ""
+                gearset_updated_dt = _parse_iso_to_utc(gearset_updated) if gearset_updated else None
+                last_deployed_dt = _parse_iso_to_utc(last_deployed) if last_deployed else None
+                if gearset_updated_dt and last_deployed_dt and gearset_updated_dt > last_deployed_dt:
+                    last_updated = gearset_updated
+                    recorded_at = gearset_updated
+                else:
+                    last_updated = last_deployed
+                    recorded_at = last_deployed
             else:  # hauled
-                last_deployed = trap.deploy_datetime_utc or datetime.now().isoformat()
-                last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+                last_deployed = trap.deploy_datetime_utc or now_iso
+                if trap.retrieved_datetime_utc or trap.surface_datetime_utc:
+                    last_updated = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_deployed
+                    recorded_at = trap.retrieved_datetime_utc or trap.surface_datetime_utc or last_updated
+                elif haul_fallback_time_utc:
+                    last_updated = haul_fallback_time_utc
+                    recorded_at = haul_fallback_time_utc
+                else:
+                    last_updated = last_deployed
+                    recorded_at = last_updated
 
-            # If last_deployed or last_update are timezone naive, assume UTC
-            if "T" in last_deployed and "+" not in last_deployed and "Z" not in last_deployed:
-                last_deployed += "+00:00"
-            if "T" in last_updated and "+" not in last_updated and "Z" not in last_updated:
-                last_updated += "+00:00"
+            # If timestamps are timezone naive, assume UTC (+00:00).
+            last_deployed = _ensure_tz_utc(last_deployed)
+            last_updated = _ensure_tz_utc(last_updated)
+            recorded_at = _ensure_tz_utc(recorded_at)
+                
+            device_additional_data = trap.dict()
 
             device = {
                 "device_id": trap.id,
                 "last_deployed": last_deployed,
                 "last_updated": last_updated,
+                "recorded_at": recorded_at,
                 "device_status": device_status,
                 "location": {
                     "latitude": trap.latitude,
                     "longitude": trap.longitude,
                 },
-                "device_additional_data": json.loads(json.dumps(trap.json(), default=str))
+                "device_additional_data": device_additional_data
             }
             if trap.release_type and trap.release_type != "none":
                 device["release_type"] = trap.release_type 
@@ -318,28 +510,15 @@ class RmwHubAdapter:
         
         # Add initial_deployment_date only for new deployments
         if device_status == "deployed" and traps:
-            # Use the earliest deployment time from the traps
-            deployment_times = [trap.deploy_datetime_utc for trap in traps if trap.deploy_datetime_utc]
-            if deployment_times:
-                earliest_deployment = min(deployment_times)
-            else:
-                earliest_deployment = None
-            
-            if earliest_deployment:
-                if isinstance(earliest_deployment, str):
-                    earliest_deployment = earliest_deployment
-                elif isinstance(earliest_deployment, datetime):
-                    earliest_deployment = earliest_deployment.isoformat()
-                else:
-                    earliest_deployment = str(earliest_deployment)
-                
-                
-            # If earliest_deployment is timezone naive, assume UTC
-            if earliest_deployment and "T" in earliest_deployment and "+" not in earliest_deployment and "Z" not in earliest_deployment:
-                earliest_deployment += "+00:00"
-
-            if earliest_deployment:
-                payload["initial_deployment_date"] = earliest_deployment
+            # Parse deployment times to UTC datetimes for correct comparison
+            parsed_times = []
+            for trap in traps:
+                if trap.deploy_datetime_utc:
+                    dt = _parse_iso_to_utc(str(trap.deploy_datetime_utc))
+                    if dt:
+                        parsed_times.append(dt)
+            if parsed_times:
+                payload["initial_deployment_date"] = min(parsed_times).isoformat()
         
         return payload
 
@@ -371,7 +550,7 @@ class RmwHubAdapter:
         """
         # Build query parameters
         params = {}
-        params['page_size'] = 1000
+        params['page_size'] = ER_GEAR_PAGE_SIZE
         if state:
             params['state'] = state
         
@@ -408,7 +587,7 @@ class RmwHubAdapter:
                 gear_count += 1
                 try:
                     logger.info('[hauled] Creating RMW update from EarthRanger gear: %s', er_gear.name)
-                    logger.info('[hauled] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
+                    logger.debug('[hauled] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)
@@ -423,7 +602,7 @@ class RmwHubAdapter:
                 gear_count += 1
                 try:
                     logger.info('[deployed] Creating RMW update from EarthRanger gear: %s', er_gear.name)
-                    logger.info('[deployed] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
+                    logger.debug('[deployed] Raw gear data: %s', json.dumps(er_gear.dict(), default=str))
                     rmw_update = await self._create_rmw_update_from_er_gear(er_gear)
                     if rmw_update:
                         rmw_updates.append(rmw_update)
@@ -636,10 +815,7 @@ class RmwHubAdapter:
         """
         Convert the datetime string to UTC format.
         """
-        if datetime_str.endswith("Z"):
-            datetime_str = datetime_str[:-1] + "+00:00"
-        datetime_obj = datetime.fromisoformat(datetime_str)
-        datetime_obj = datetime_obj.astimezone(pytz.utc)
-        formatted_datetime = datetime_obj.isoformat()
-
-        return formatted_datetime
+        dt = dateutil_parser.isoparse(datetime_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()

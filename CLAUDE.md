@@ -14,6 +14,22 @@ This is a Gundi integration service that provides **bidirectional synchronizatio
 
 ## Development Commands
 
+### Recompiling requirements (pip-compile)
+
+To regenerate `requirements.txt` from the `.in` files:
+
+```bash
+pip-compile --output-file=requirements.txt requirements-base.in requirements-dev.in requirements.in
+```
+
+**If you see `AttributeError: 'PackageFinder' object has no attribute 'allow_all_prereleases'`:** pip-tools 7.5.2 is incompatible with pip 26+. Constrain pip in your venv:
+
+```bash
+pip install 'pip<26'
+```
+
+Then run `pip-compile` again.
+
 ### Running the Application
 
 **Local Development (Docker):**

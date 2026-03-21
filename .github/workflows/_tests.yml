@@ -13,8 +13,11 @@ jobs:
           python-version: '3.10' 
       - name: Install pip
         run: python -m ensurepip --upgrade
+      # pip-tools 7.5.2 is incompatible with pip 26+ (PackageFinder.allow_all_prereleases removed)
+      - name: Constrain pip for pip-tools
+        run: pip install 'pip<26'
       - name: Install pip tools
-        run: pip install pip-tools
+        run: pip install 'pip-tools==7.5.2'
       - name: Install compile dependencies
         run: pip-compile --output-file=requirements.txt requirements-base.in requirements-dev.in requirements.in
       - name: Install dependencies

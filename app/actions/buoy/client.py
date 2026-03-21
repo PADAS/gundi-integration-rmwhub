@@ -147,22 +147,23 @@ class BuoyClient:
 
     async def get_all_gears(
         self,
+        page_size: int = 25,
         timeout: Optional[httpx.Timeout] = None,
     ) -> List[BuoyGear]:
         """
         Retrieve all gears from EarthRanger API with pagination handling.
-        
+
         Args:
-            params: Optional query parameters
+            page_size: Number of gears per page (default 25)
             timeout: Optional timeout settings (overrides defaults)
-            
+
         Returns:
             List of BuoyGear objects
         """
         gears = []
-        async for gear in self.iter_gears(params={"state": "deployed"}, timeout=timeout):
+        async for gear in self.iter_gears(params={"state": "deployed", "page_size": page_size}, timeout=timeout):
             gears.append(gear)
-        async for gear in self.iter_gears(params={"state": "hauled"}, timeout=timeout):
+        async for gear in self.iter_gears(params={"state": "hauled", "page_size": page_size}, timeout=timeout):
             gears.append(gear)
         return gears
 
