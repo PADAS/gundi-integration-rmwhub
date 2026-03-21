@@ -140,7 +140,6 @@ python-json-logger==2.0.7
     # via -r requirements-base.in
 pytz==2025.2
     # via
-    #   -r requirements.in
     #   dateparser
     #   earthranger-client
 redis==5.0.8

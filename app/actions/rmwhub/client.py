@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 import httpx
 from datetime import datetime, timezone
@@ -65,7 +65,7 @@ class RmwHubClient:
 
         return response.text
 
-    async def upload_data(self, updates: List[GearSet]) -> httpx.Response:
+    async def upload_data(self, updates: List[GearSet]) -> Optional[httpx.Response]:
         """
         Upload data to the RMWHub API using the upload_data endpoint.
         Retries on 502/503/504 (transient gateway/server errors).

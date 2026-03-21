@@ -280,7 +280,11 @@ class RmwHubAdapter:
                 existing_gear = unique_sets[set_id_lower]
                 new_dt = _parse_iso_to_utc(rmw_set.when_updated_utc or "")
                 old_dt = _parse_iso_to_utc(existing_gear.when_updated_utc or "")
-                if new_dt and old_dt and new_dt > old_dt:
+                if new_dt and old_dt:
+                    if new_dt > old_dt:
+                        unique_sets[set_id_lower] = rmw_set
+                elif new_dt and not old_dt:
+                    # Prefer the set with a parseable timestamp
                     unique_sets[set_id_lower] = rmw_set
         
         rmw_sets = list(unique_sets.values())
