@@ -176,7 +176,7 @@ class RmwHubAdapter:
         return uuid.UUID(self.integration_id)
 
     async def download_data(
-        self, start_datetime: str, status: str = "all"
+        self, start_datetime: datetime, status: str = "all"
     ) -> List[GearSet]:
         """
         Downloads data from the RMW Hub API using the search_hub endpoint.

@@ -40,7 +40,7 @@ class RmwHubClient:
             read=read_timeout
         )
 
-    async def search_hub(self, start_datetime: datetime) -> dict:
+    async def search_hub(self, start_datetime: datetime) -> str:
         """
         Downloads data from the RMWHub API using the search_hub endpoint.
         ref: https://ropeless.network/api/docs#/Download

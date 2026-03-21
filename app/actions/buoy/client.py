@@ -152,11 +152,11 @@ class BuoyClient:
     ) -> List[BuoyGear]:
         """
         Retrieve all gears from EarthRanger API with pagination handling.
-        
+
         Args:
-            params: Optional query parameters
+            page_size: Number of gears per page (default 25)
             timeout: Optional timeout settings (overrides defaults)
-            
+
         Returns:
             List of BuoyGear objects
         """
