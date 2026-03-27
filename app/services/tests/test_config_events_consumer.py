@@ -7,6 +7,7 @@ from app.main import app
 api_client = TestClient(app)
 
 
+
 @pytest.mark.asyncio
 async def test_process_event_integration_created_from_pubsub(
         mocker, mock_gundi_client_v2, mock_publish_event, mock_action_handlers, mock_config_manager,
