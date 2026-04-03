@@ -128,9 +128,9 @@ class TestRmwHubAdapter:
             mock_rmw_client_class.assert_called_once_with(
                 "test_api_key",
                 "https://test.rmwhub.com",
-                default_timeout=60.0,
+                default_timeout=120.0,
                 connect_timeout=10.0,
-                read_timeout=60.0
+                read_timeout=120.0
             )
             mock_gear_client_class.assert_called_once()
 
