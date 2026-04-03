@@ -626,8 +626,8 @@ class RmwHubAdapter:
 
             if rmw_updates:
                 try:
-                    # Upload updates to RMW Hub in batches of 50
-                    batch_size = 50
+                    # Upload updates to RMW Hub in batches of 10
+                    batch_size = 10
                     total_trap_count = 0
                     all_failed_sets = []
                     
