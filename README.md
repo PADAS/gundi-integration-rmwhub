@@ -173,6 +173,17 @@ class GearSet(BaseModel):
 
 **Multi-trap sets**: Sets with any number of traps (e.g. three device gearsets) are supported. The download flow parses all traps and builds one gear payload per set for the Buoy API. When any device in a set is marked for haul, the **whole set** is hauled in Buoy (all devices in one haul payload) so the gearset never ends up in a partial state.
 
+#### trawl_path
+trawl_path (string | null)
+Optional path of the trawl deployment. This feature is still under development but will have
+the following proposed rules:
+* Trawl path as line string "trawl_path": {"type": "LineString", "coordinates": [ [“lat”,“long” ], [“lat”, “long”], …] }
+* First and last points of the trawl path array correspond to first and last trap locations of the gear set
+* Trawl path points are updated as the vessel goes along the path
+* Trawl path increment defined by distance with 100 m recommended as default increment
+* If the status of either end of the gear set is changed to hauled, the entire gear set is hauled including the trawl path
+* If start and/or end positions of gear set are updated such that it no longer corresponds to the trawl path, the trawl path is greyed out and straight (dashed) line is drawn between trawl end points
+
 ### Trap Object
 
 Represents an individual buoy/trap within a gear set.
@@ -1121,7 +1132,10 @@ for destination in connection_details.destinations:
 | 200 | OK | Process response data |
 | 400 | Bad Request | Log error, skip item |
 | 401 | Unauthorized | Check API key |
-| 500 | Server Error | Retry or skip |
+| 502 | Bad Gateway | Retry up to 3 times (5s delay) |
+| 503 | Service Unavailable | Retry up to 3 times (5s delay) |
+| 504 | Gateway Timeout | Retry up to 3 times (5s delay) |
+| 500 | Server Error | Log error, skip |
 
 ---
 
@@ -1136,6 +1150,18 @@ class PullRmwHubObservationsConfiguration:
     share_with: List[str]           # Entities to share data with
     minutes_to_sync: int            # Default: 30 (overridden to 90 days)
 ```
+
+### RMW Hub Client Timeouts
+
+```python
+RmwHubAdapter(
+    rmw_timeout=120.0,           # Total request timeout (default)
+    rmw_connect_timeout=10.0,    # Connection timeout
+    rmw_read_timeout=120.0       # Read timeout
+)
+```
+
+Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts.
 
 ### Gear Client Timeouts
 
@@ -1162,6 +1188,7 @@ This bidirectional integration provides robust synchronization between RMW Hub a
 ✅ **Multi-destination support** - Handle multiple ER environments  
 ✅ **Memory-efficient streaming** - Process large datasets without memory issues  
 ✅ **Comprehensive error handling** - Continue processing despite individual failures  
+✅ **Transient failure resilience** - Automatic retries on 502/503/504 for both downloads and uploads  
 ✅ **Dual schedule** - High-frequency sync (3 min) + daily backup  
 ✅ **Activity logging** - Full audit trail in Gundi  
 

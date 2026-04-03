@@ -144,7 +144,9 @@ class TestRmwHubClient:
         
         # Verify error was logged
         mock_logger.error.assert_called_once_with(
-            "Failed to download data from RMW Hub API. Error: 400 - {\"error\": \"Bad request\"}"
+            "Failed to download data from RMW Hub API. Error: %s - %s",
+            400,
+            '{"error": "Bad request"}',
         )
     
     @pytest.mark.asyncio
@@ -570,7 +572,7 @@ class TestRmwHubClient:
         result = await client.upload_data([sample_gearset])
 
         assert result.status_code == 503
-        assert mock_client.post.call_count == 3  # UPLOAD_RETRY_COUNT
+        assert mock_client.post.call_count == 3  # RETRY_COUNT
         assert mock_sleep.call_count == 2  # retries - 1
         mock_logger.error.assert_called()
 

@@ -154,9 +154,9 @@ class RmwHubAdapter:
         self.rmw_client = RmwHubClient(
             api_key,
             rmw_url,
-            default_timeout=kwargs.get('rmw_timeout', 60.0),
+            default_timeout=kwargs.get('rmw_timeout', 120.0),
             connect_timeout=kwargs.get('rmw_connect_timeout', 10.0),
-            read_timeout=kwargs.get('rmw_read_timeout', 60.0),
+            read_timeout=kwargs.get('rmw_read_timeout', 120.0),
         )
         self.gear_client = BuoyClient(
             er_token,
