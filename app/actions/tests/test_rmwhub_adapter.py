@@ -194,7 +194,7 @@ class TestRmwHubAdapter:
             }]
         }
         
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
         
@@ -209,17 +209,17 @@ class TestRmwHubAdapter:
     async def test_download_data_with_status(self, adapter):
         """Test data download with status filter."""
         mock_response = {"sets": []}
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
 
         await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="deployed")
 
-        adapter.rmw_client.search_hub.assert_called_once_with(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
+        adapter.rmw_client.search_hub_all.assert_called_once_with(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
 
     @pytest.mark.asyncio
     async def test_download_data_no_sets(self, adapter):
         """Test data download when no sets are returned."""
         mock_response = {"data": "no_sets_key"}
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         with patch('app.actions.rmwhub.adapter.logger') as mock_logger:
             result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
@@ -229,13 +229,13 @@ class TestRmwHubAdapter:
 
     @pytest.mark.asyncio
     async def test_download_data_api_error(self, adapter):
-        """Test data download when API returns error."""
-        error_response = "Invalid JSON response"
-        adapter.rmw_client.search_hub = AsyncMock(return_value=error_response)
-        
+        """Test data download when API returns error (no sets key)."""
+        error_response = {"error": "something went wrong"}
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=error_response)
+
         with patch('app.actions.rmwhub.adapter.logger') as mock_logger:
             result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
-            
+
             assert result == []
             mock_logger.error.assert_called_once()
 
@@ -814,7 +814,7 @@ class TestRmwHubAdapter:
             }]
         }
         
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="deployed")
         
@@ -865,7 +865,7 @@ class TestRmwHubAdapter:
             }]
         }
         
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="hauled")
         

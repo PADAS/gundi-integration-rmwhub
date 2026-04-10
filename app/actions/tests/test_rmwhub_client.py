@@ -111,7 +111,7 @@ class TestRmwHubClient:
         expected_data = {
             "format_version": 0.1,
             "api_key": "test_api_key",
-            "max_sets": 10000,
+            "max_sets": 1000,
             "start_datetime_utc": sample_datetime.astimezone(timezone.utc).isoformat(),
         }
         

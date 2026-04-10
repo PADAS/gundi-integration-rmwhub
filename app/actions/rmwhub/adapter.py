@@ -180,19 +180,14 @@ class RmwHubAdapter:
     ) -> List[GearSet]:
         """
         Downloads data from the RMW Hub API using the search_hub endpoint.
+        Paginates automatically via search_hub_all.
         ref: https://ropeless.network/api/docs#/Download
         """
 
-        response = await self.rmw_client.search_hub(start_datetime)
-
-        try:
-            response_json = json.loads(response)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to download data from RMW Hub API. Invalid JSON response: {response}")
-            return []
+        response_json = await self.rmw_client.search_hub_all(start_datetime)
 
         if "sets" not in response_json:
-            logger.error(f"Failed to download data from RMW Hub API. Error: {response}")
+            logger.error(f"Failed to download data from RMW Hub API. Error: {response_json}")
             return []
 
         rmwsets = self.convert_to_sets(response_json)

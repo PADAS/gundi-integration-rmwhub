@@ -47,7 +47,7 @@ Body:
 {
   "format_version": 0.1,
   "api_key": "<api_key>",
-  "max_sets": 10000,
+  "max_sets": 1000,
   "start_datetime_utc": "2025-10-20T00:00:00+00:00"
 }
 ```
@@ -55,8 +55,10 @@ Body:
 **Parameters**:
 - `format_version`: API format version (currently 0.1)
 - `api_key`: Authentication key
-- `max_sets`: Maximum number of gear sets to return
+- `max_sets`: Maximum number of gear sets to return per page (1000)
 - `start_datetime_utc`: Filter sets updated after this timestamp
+
+**Pagination**: The client automatically paginates through results by advancing `start_datetime_utc` to the latest `when_updated_utc` from each page. This continues until a page returns fewer than 1000 sets or a maximum of 20 pages is reached. Sets are deduplicated by `set_id` across pages.
 
 #### Response Format
 ```json
@@ -530,17 +532,19 @@ def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. FETCH FROM RMW HUB                                       │
+│ 2. FETCH FROM RMW HUB (paginated)                            │
 │    POST /search_hub/                                        │
 │    - api_key authentication                                 │
-│    - max_sets: 10000                                        │
+│    - max_sets: 1000 per page                                │
 │    - start_datetime_utc filter                              │
+│    - Advance start_datetime_utc between pages               │
+│    - Deduplicate sets by set_id across pages                │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. PARSE RESPONSE                                           │
-│    - Extract "sets" array                                   │
+│    - Extract combined "sets" array from all pages           │
 │    - Convert to GearSet objects                             │
 │    - Convert nested traps to Trap objects                   │
 └────────────────┬────────────────────────────────────────────┘
@@ -1161,7 +1165,7 @@ RmwHubAdapter(
 )
 ```
 
-Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts.
+Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts. The `search_hub_all` method paginates automatically (1000 sets per page, up to 20 pages) to avoid timeouts on large result sets.
 
 ### Gear Client Timeouts
 

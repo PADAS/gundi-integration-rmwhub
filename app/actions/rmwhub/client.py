@@ -1,9 +1,10 @@
 import asyncio
 import json
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import httpx
+from dateutil import parser as dateutil_parser
 from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
@@ -16,6 +17,10 @@ logger = logging.getLogger(__name__)
 RETRY_COUNT = 3
 RETRY_DELAY_SEC = 5
 RETRYABLE_STATUS_CODES = (502, 503, 504)
+
+# Pagination configuration for search_hub
+SEARCH_PAGE_SIZE = 1000
+MAX_SEARCH_PAGES = 20
 
 
 class RmwHubClient:
@@ -50,7 +55,7 @@ class RmwHubClient:
         data = {
             "format_version": 0.1,
             "api_key": self.api_key,
-            "max_sets": 10000,
+            "max_sets": SEARCH_PAGE_SIZE,
             "start_datetime_utc": start_datetime.astimezone(timezone.utc).isoformat(),  # Pull all data from the start date
         }
 
@@ -87,6 +92,87 @@ class RmwHubClient:
                         response.text,
                     )
             return last_response.text
+
+    async def search_hub_all(self, start_datetime: datetime) -> Dict:
+        """
+        Downloads all data from the RMWHub API, paginating through results.
+
+        Makes repeated calls to search_hub with max_sets=SEARCH_PAGE_SIZE,
+        advancing start_datetime_utc to the latest when_updated_utc in each
+        page until fewer than SEARCH_PAGE_SIZE sets are returned.
+
+        Returns a dict with ``{"format_version": 0.1, "sets": [...]}``.
+        """
+        all_sets: List[dict] = []
+        seen_set_ids: set = set()
+        current_start = start_datetime
+        pages_fetched = 0
+
+        for page in range(1, MAX_SEARCH_PAGES + 1):
+            logger.info(
+                "Fetching page %d from RMW Hub (start_datetime=%s)",
+                page,
+                current_start.isoformat(),
+            )
+            response_text = await self.search_hub(current_start)
+
+            try:
+                response_json = json.loads(response_text)
+            except json.JSONDecodeError:
+                logger.error("Invalid JSON response from RMW Hub on page %d", page)
+                break
+
+            sets = response_json.get("sets", [])
+            if not sets:
+                break
+
+            new_count = 0
+            for s in sets:
+                set_id = s.get("set_id", "")
+                if set_id not in seen_set_ids:
+                    seen_set_ids.add(set_id)
+                    all_sets.append(s)
+                    new_count += 1
+
+            pages_fetched = page
+            logger.info(
+                "Page %d: received %d sets (%d new, %d total)",
+                page,
+                len(sets),
+                new_count,
+                len(all_sets),
+            )
+
+            # If we got fewer than a full page, there's nothing left
+            if len(sets) < SEARCH_PAGE_SIZE:
+                break
+
+            # Advance start_datetime to the max when_updated_utc in this page
+            max_updated = max(
+                (s.get("when_updated_utc", "") for s in sets),
+                default="",
+            )
+            if not max_updated:
+                break
+
+            try:
+                next_start = dateutil_parser.isoparse(max_updated)
+                if next_start.tzinfo is None:
+                    next_start = next_start.replace(tzinfo=timezone.utc)
+                current_start = next_start
+            except (ValueError, TypeError):
+                logger.error(
+                    "Could not parse when_updated_utc for pagination: %s",
+                    max_updated,
+                )
+                break
+
+        logger.info(
+            "Fetched %d total sets from RMW Hub across %d page(s)",
+            len(all_sets),
+            pages_fetched,
+        )
+        return {"format_version": 0.1, "sets": all_sets}
 
     async def upload_data(self, updates: List[GearSet]) -> httpx.Response:
         """
