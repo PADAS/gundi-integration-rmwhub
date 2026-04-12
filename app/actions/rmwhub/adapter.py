@@ -154,9 +154,9 @@ class RmwHubAdapter:
         self.rmw_client = RmwHubClient(
             api_key,
             rmw_url,
-            default_timeout=kwargs.get('rmw_timeout', 60.0),
+            default_timeout=kwargs.get('rmw_timeout', 120.0),
             connect_timeout=kwargs.get('rmw_connect_timeout', 10.0),
-            read_timeout=kwargs.get('rmw_read_timeout', 60.0),
+            read_timeout=kwargs.get('rmw_read_timeout', 120.0),
         )
         self.gear_client = BuoyClient(
             er_token,
@@ -180,19 +180,14 @@ class RmwHubAdapter:
     ) -> List[GearSet]:
         """
         Downloads data from the RMW Hub API using the search_hub endpoint.
+        Paginates automatically via search_hub_all.
         ref: https://ropeless.network/api/docs#/Download
         """
 
-        response = await self.rmw_client.search_hub(start_datetime)
-
-        try:
-            response_json = json.loads(response)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to download data from RMW Hub API. Invalid JSON response: {response}")
-            return []
+        response_json = await self.rmw_client.search_hub_all(start_datetime)
 
         if "sets" not in response_json:
-            logger.error(f"Failed to download data from RMW Hub API. Error: {response}")
+            logger.error(f"Failed to download data from RMW Hub API. Error: {response_json}")
             return []
 
         rmwsets = self.convert_to_sets(response_json)
@@ -450,17 +445,20 @@ class RmwHubAdapter:
             # Get the appropriate timestamp based on status
             if device_status == "deployed":
                 last_deployed = trap.deploy_datetime_utc or now_iso
-                # Use gearset's when_updated_utc for last_updated/recorded_at when it's later than
-                # deploy time, so location-only (or set-move) updates are seen as updates by the API.
+                # Use gearset's when_updated_utc for last_updated when it's later than deploy time,
+                # so location-only (or set-move) updates are seen as updates by the API.
+                # recorded_at must always use the actual deploy time because ER/Buoy uses it as the
+                # assigned_range lower bound. Inflating it to when_updated_utc can make it later than
+                # a subsequent haul's recorded_at (retrieved_datetime_utc), creating an invalid range
+                # where upper < lower — especially for trawls with very short deploy-to-retrieval windows.
                 gearset_updated = getattr(gearset, "when_updated_utc", None) or ""
                 gearset_updated_dt = _parse_iso_to_utc(gearset_updated) if gearset_updated else None
                 last_deployed_dt = _parse_iso_to_utc(last_deployed) if last_deployed else None
                 if gearset_updated_dt and last_deployed_dt and gearset_updated_dt > last_deployed_dt:
                     last_updated = gearset_updated
-                    recorded_at = gearset_updated
                 else:
                     last_updated = last_deployed
-                    recorded_at = last_deployed
+                recorded_at = last_deployed
             else:  # hauled
                 last_deployed = trap.deploy_datetime_utc or now_iso
                 if trap.retrieved_datetime_utc or trap.surface_datetime_utc:
@@ -626,8 +624,8 @@ class RmwHubAdapter:
 
             if rmw_updates:
                 try:
-                    # Upload updates to RMW Hub in batches of 50
-                    batch_size = 50
+                    # Upload updates to RMW Hub in batches of 10
+                    batch_size = 10
                     total_trap_count = 0
                     all_failed_sets = []
                     

@@ -128,9 +128,9 @@ class TestRmwHubAdapter:
             mock_rmw_client_class.assert_called_once_with(
                 "test_api_key",
                 "https://test.rmwhub.com",
-                default_timeout=60.0,
+                default_timeout=120.0,
                 connect_timeout=10.0,
-                read_timeout=60.0
+                read_timeout=120.0
             )
             mock_gear_client_class.assert_called_once()
 
@@ -194,7 +194,7 @@ class TestRmwHubAdapter:
             }]
         }
         
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
         
@@ -209,17 +209,17 @@ class TestRmwHubAdapter:
     async def test_download_data_with_status(self, adapter):
         """Test data download with status filter."""
         mock_response = {"sets": []}
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
 
         await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="deployed")
 
-        adapter.rmw_client.search_hub.assert_called_once_with(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
+        adapter.rmw_client.search_hub_all.assert_called_once_with(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
 
     @pytest.mark.asyncio
     async def test_download_data_no_sets(self, adapter):
         """Test data download when no sets are returned."""
         mock_response = {"data": "no_sets_key"}
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         with patch('app.actions.rmwhub.adapter.logger') as mock_logger:
             result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
@@ -229,13 +229,13 @@ class TestRmwHubAdapter:
 
     @pytest.mark.asyncio
     async def test_download_data_api_error(self, adapter):
-        """Test data download when API returns error."""
-        error_response = "Invalid JSON response"
-        adapter.rmw_client.search_hub = AsyncMock(return_value=error_response)
-        
+        """Test data download when API returns error (no sets key)."""
+        error_response = {"error": "something went wrong"}
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=error_response)
+
         with patch('app.actions.rmwhub.adapter.logger') as mock_logger:
             result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc))
-            
+
             assert result == []
             mock_logger.error.assert_called_once()
 
@@ -814,7 +814,7 @@ class TestRmwHubAdapter:
             }]
         }
         
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="deployed")
         
@@ -865,7 +865,7 @@ class TestRmwHubAdapter:
             }]
         }
         
-        adapter.rmw_client.search_hub = AsyncMock(return_value=json.dumps(mock_response))
+        adapter.rmw_client.search_hub_all = AsyncMock(return_value=mock_response)
         
         result = await adapter.download_data(datetime(2023, 9, 15, 10, 0, 0, tzinfo=timezone.utc), status="hauled")
         
@@ -1086,8 +1086,9 @@ class TestRmwHubAdapter:
         assert len(result["devices"]) == 1
         device = result["devices"][0]
         assert "recorded_at" in device
-        # When gearset.when_updated_utc is after deploy time, use it so location/set updates are applied
-        assert device["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        # recorded_at must always use actual deploy time (not when_updated_utc) because ER/Buoy
+        # uses it as the assigned_range lower bound; inflating it can cause range inversions on haul.
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
         assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
         assert device["last_updated"] == "2023-09-15T18:00:00+00:00"
         assert device["device_status"] == "deployed"
@@ -1257,8 +1258,8 @@ class TestRmwHubAdapter:
         result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
         
         device = result["devices"][0]
-        # When gearset.when_updated_utc is after deploy, it is used (normalized to +00:00)
-        assert device["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        # recorded_at always uses actual deploy time, not when_updated_utc
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
 
     def test_create_gear_payload_from_gearset_multiple_traps(self, adapter):
         """Test creating gear payload with multiple traps."""
@@ -1305,9 +1306,9 @@ class TestRmwHubAdapter:
         assert result["deployment_type"] == "trawl"
         assert result["devices_in_set"] == 2
         
-        # Each device uses gearset when_updated_utc when it's after deploy so location/set updates apply
-        assert result["devices"][0]["recorded_at"] == "2023-09-15T18:00:00+00:00"
-        assert result["devices"][1]["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        # recorded_at always uses actual deploy time per device
+        assert result["devices"][0]["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        assert result["devices"][1]["recorded_at"] == "2023-09-15T14:35:00+00:00"
         
         # Check release_type handling
         assert result["devices"][0]["release_type"] == "manual"

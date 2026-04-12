@@ -47,7 +47,7 @@ Body:
 {
   "format_version": 0.1,
   "api_key": "<api_key>",
-  "max_sets": 10000,
+  "max_sets": 1000,
   "start_datetime_utc": "2025-10-20T00:00:00+00:00"
 }
 ```
@@ -55,8 +55,10 @@ Body:
 **Parameters**:
 - `format_version`: API format version (currently 0.1)
 - `api_key`: Authentication key
-- `max_sets`: Maximum number of gear sets to return
+- `max_sets`: Maximum number of gear sets to return per page (1000)
 - `start_datetime_utc`: Filter sets updated after this timestamp
+
+**Pagination**: The client automatically paginates through results by advancing `start_datetime_utc` to the latest `when_updated_utc` from each page. This continues until a page returns fewer than 1000 sets or a maximum of 20 pages is reached. Sets are deduplicated by `set_id` across pages.
 
 #### Response Format
 ```json
@@ -173,6 +175,17 @@ class GearSet(BaseModel):
 
 **Multi-trap sets**: Sets with any number of traps (e.g. three device gearsets) are supported. The download flow parses all traps and builds one gear payload per set for the Buoy API. When any device in a set is marked for haul, the **whole set** is hauled in Buoy (all devices in one haul payload) so the gearset never ends up in a partial state.
 
+#### trawl_path
+trawl_path (object | null)
+Optional path of the trawl deployment. This feature is still under development but will have
+the following proposed rules:
+* Trawl path as a LineString: `”trawl_path”: {“type”: “LineString”, “coordinates”: [[-70.1234, 42.5678], [-70.1200, 42.5700]]}` (GeoJSON coordinate order is `[longitude, latitude]`)
+* First and last points of the trawl path array correspond to first and last trap locations of the gear set
+* Trawl path points are updated as the vessel goes along the path
+* Trawl path increment defined by distance with 100 m recommended as default increment
+* If the status of either end of the gear set is changed to hauled, the entire gear set is hauled including the trawl path
+* If start and/or end positions of gear set are updated such that it no longer corresponds to the trawl path, the trawl path is greyed out and straight (dashed) line is drawn between trawl end points
+
 ### Trap Object
 
 Represents an individual buoy/trap within a gear set.
@@ -215,19 +228,25 @@ RMW Hub may occasionally return the same `trap_id` more than once in a set (e.g.
 
 ### Timestamp Priority
 
-The `get_latest_update_time()` method determines the trap's recorded time:
+The `_create_gear_payload_from_gearset()` method determines `recorded_at` and `last_updated` for each device in the gear payload sent to the Buoy API.
 
 **For Deployed Status**:
 ```python
 recorded_at = deploy_datetime_utc or now()
+last_updated = when_updated_utc if when_updated_utc > deploy_datetime_utc else deploy_datetime_utc
 ```
 
-**For Retrieved Status**:
+`recorded_at` always uses the actual deployment time because ER/Buoy uses it as the `assigned_range` lower bound. `last_updated` may use the gearset's `when_updated_utc` (when it's later than the deploy time) so that location-only or set-move updates are recognized by the API.
+
+> **Why `recorded_at` must not use `when_updated_utc`**: ER/Buoy sets `assigned_range = [recorded_at, ...)` on deploy and `assigned_range = [..., recorded_at + 1s)` on haul. For trawls with very short deploy-to-retrieval windows, `when_updated_utc` (a metadata timestamp) can be later than `retrieved_datetime_utc` (the actual haul time). Inflating `recorded_at` to `when_updated_utc` on deploy would create an invalid range where `upper < lower`, leaving the device permanently stuck as "deployed."
+
+**For Retrieved/Hauled Status**:
 ```python
-recorded_at = retrieved_datetime_utc or surface_datetime_utc or deploy_datetime_utc or now()
+recorded_at = retrieved_datetime_utc or surface_datetime_utc or haul_fallback_time or deploy_datetime_utc or now()
+last_updated = recorded_at  # same priority chain
 ```
 
-**Priority**: `retrieved` > `surfaced` > `deployed` > `current time`
+**Priority**: `retrieved` > `surfaced` > `haul_fallback` > `deployed` > `current time`
 
 ---
 
@@ -519,17 +538,19 @@ def _get_serial_number_from_device_id(self, device_id: str, manufacturer: str) -
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. FETCH FROM RMW HUB                                       │
+│ 2. FETCH FROM RMW HUB (paginated)                            │
 │    POST /search_hub/                                        │
 │    - api_key authentication                                 │
-│    - max_sets: 10000                                        │
+│    - max_sets: 1000 per page                                │
 │    - start_datetime_utc filter                              │
+│    - Advance start_datetime_utc between pages               │
+│    - Deduplicate sets by set_id across pages                │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. PARSE RESPONSE                                           │
-│    - Extract "sets" array                                   │
+│    - Extract combined "sets" array from all pages           │
 │    - Convert to GearSet objects                             │
 │    - Convert nested traps to Trap objects                   │
 └────────────────┬────────────────────────────────────────────┘
@@ -1121,7 +1142,10 @@ for destination in connection_details.destinations:
 | 200 | OK | Process response data |
 | 400 | Bad Request | Log error, skip item |
 | 401 | Unauthorized | Check API key |
-| 500 | Server Error | Retry or skip |
+| 502 | Bad Gateway | Retry up to 3 times (5s delay) |
+| 503 | Service Unavailable | Retry up to 3 times (5s delay) |
+| 504 | Gateway Timeout | Retry up to 3 times (5s delay) |
+| 500 | Server Error | Log error, skip |
 
 ---
 
@@ -1136,6 +1160,18 @@ class PullRmwHubObservationsConfiguration:
     share_with: List[str]           # Entities to share data with
     minutes_to_sync: int            # Default: 30 (overridden to 90 days)
 ```
+
+### RMW Hub Client Timeouts
+
+```python
+RmwHubAdapter(
+    rmw_timeout=120.0,           # Total request timeout (default)
+    rmw_connect_timeout=10.0,    # Connection timeout
+    rmw_read_timeout=120.0       # Read timeout
+)
+```
+
+Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts. The `search_hub_all` method paginates automatically (1000 sets per page, up to 20 pages) to avoid timeouts on large result sets.
 
 ### Gear Client Timeouts
 
@@ -1162,6 +1198,7 @@ This bidirectional integration provides robust synchronization between RMW Hub a
 ✅ **Multi-destination support** - Handle multiple ER environments  
 ✅ **Memory-efficient streaming** - Process large datasets without memory issues  
 ✅ **Comprehensive error handling** - Continue processing despite individual failures  
+✅ **Transient failure resilience** - Automatic retries on 502/503/504 for both downloads and uploads  
 ✅ **Dual schedule** - High-frequency sync (3 min) + daily backup  
 ✅ **Activity logging** - Full audit trail in Gundi  
 
