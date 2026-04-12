@@ -375,8 +375,11 @@ async def process_upload(self, start_datetime: datetime) -> Tuple[int, dict]:
         if rmw_update:
             rmw_updates.append(rmw_update)
     
-    # Upload to RMW Hub
-    response = await self.rmw_client.upload_data(rmw_updates)
+    # Upload to RMW Hub in batches of 5
+    batch_size = 5
+    for i in range(0, len(rmw_updates), batch_size):
+        batch = rmw_updates[i:i + batch_size]
+        response = await self.rmw_client.upload_data(batch)
     return trap_count, response_data
 ```
 
@@ -1165,13 +1168,16 @@ class PullRmwHubObservationsConfiguration:
 
 ```python
 RmwHubAdapter(
-    rmw_timeout=120.0,           # Total request timeout (default)
-    rmw_connect_timeout=10.0,    # Connection timeout
-    rmw_read_timeout=120.0       # Read timeout
+    rmw_timeout=120.0,                # Total request timeout (search_hub)
+    rmw_connect_timeout=10.0,         # Connection timeout (search_hub)
+    rmw_read_timeout=120.0,           # Read timeout (search_hub)
+    rmw_upload_timeout=300.0,         # Total request timeout (upload_data)
+    rmw_upload_connect_timeout=10.0,  # Connection timeout (upload_data)
+    rmw_upload_read_timeout=300.0     # Read timeout (upload_data)
 )
 ```
 
-Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts. The `search_hub_all` method paginates automatically (1000 sets per page, up to 20 pages) to avoid timeouts on large result sets.
+Uploads use a longer timeout (5 minutes) and smaller batch sizes (5 gear sets per request) to avoid hanging on slow RMW Hub responses. Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts. The `search_hub_all` method paginates automatically (1000 sets per page, up to 20 pages) to avoid timeouts on large result sets.
 
 ### Gear Client Timeouts
 

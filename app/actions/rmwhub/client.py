@@ -35,6 +35,9 @@ class RmwHubClient:
         default_timeout: float = 120.0,
         connect_timeout: float = 10.0,
         read_timeout: float = 120.0,
+        upload_timeout: float = 300.0,
+        upload_connect_timeout: float = 10.0,
+        upload_read_timeout: float = 300.0,
     ):
         self.api_key = api_key
         # Normalize base URL: no trailing slash so path concatenation never produces "//"
@@ -43,6 +46,11 @@ class RmwHubClient:
             timeout=default_timeout,
             connect=connect_timeout,
             read=read_timeout
+        )
+        self.upload_timeout = httpx.Timeout(
+            timeout=upload_timeout,
+            connect=upload_connect_timeout,
+            read=upload_read_timeout,
         )
 
     async def search_hub(self, start_datetime: datetime) -> str:
@@ -224,7 +232,7 @@ class RmwHubClient:
         logger.info("Uploading %d gear sets to RMW Hub API at %s (set_ids=%s)", len(sets), url, set_ids)
         logger.debug("Upload payload: %d sets, set_ids=%s", len(sets), set_ids)
 
-        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
+        async with httpx.AsyncClient(timeout=self.upload_timeout) as client:
             last_response: httpx.Response | None = None
             for attempt in range(1, RETRY_COUNT + 1):
                 response = await client.post(

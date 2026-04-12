@@ -157,6 +157,9 @@ class RmwHubAdapter:
             default_timeout=kwargs.get('rmw_timeout', 120.0),
             connect_timeout=kwargs.get('rmw_connect_timeout', 10.0),
             read_timeout=kwargs.get('rmw_read_timeout', 120.0),
+            upload_timeout=kwargs.get('rmw_upload_timeout', 300.0),
+            upload_connect_timeout=kwargs.get('rmw_upload_connect_timeout', 10.0),
+            upload_read_timeout=kwargs.get('rmw_upload_read_timeout', 300.0),
         )
         self.gear_client = BuoyClient(
             er_token,
@@ -624,8 +627,8 @@ class RmwHubAdapter:
 
             if rmw_updates:
                 try:
-                    # Upload updates to RMW Hub in batches of 10
-                    batch_size = 10
+                    # Upload updates to RMW Hub in batches of 5
+                    batch_size = 5
                     total_trap_count = 0
                     all_failed_sets = []
                     

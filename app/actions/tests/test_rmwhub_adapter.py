@@ -130,7 +130,10 @@ class TestRmwHubAdapter:
                 "https://test.rmwhub.com",
                 default_timeout=120.0,
                 connect_timeout=10.0,
-                read_timeout=120.0
+                read_timeout=120.0,
+                upload_timeout=300.0,
+                upload_connect_timeout=10.0,
+                upload_read_timeout=300.0,
             )
             mock_gear_client_class.assert_called_once()
 
