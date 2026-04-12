@@ -654,7 +654,9 @@ class RmwHubAdapter:
                             if failed_sets:
                                 logger.warning(f"Batch {batch_num}: Failed to upload {len(failed_sets)} sets: {failed_sets}")
                         else:
+                            batch_set_ids = [str(s.id) for s in batch]
                             logger.error(f"Batch {batch_num} upload failed with status {response.status_code}")
+                            all_failed_sets.extend(batch_set_ids)
                             await log_action_activity(
                                 integration_id=self.integration_uuid,
                                 action_id="pull_observations",

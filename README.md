@@ -377,10 +377,18 @@ async def process_upload(self, start_datetime: datetime) -> Tuple[int, dict]:
     
     # Upload to RMW Hub in batches of 5
     batch_size = 5
+    total_trap_count = 0
+    all_failed_sets = []
     for i in range(0, len(rmw_updates), batch_size):
         batch = rmw_updates[i:i + batch_size]
         response = await self.rmw_client.upload_data(batch)
-    return trap_count, response_data
+        if response.status_code == 200:
+            result = response.json().get("result", {})
+            total_trap_count += result.get("trap_count", 0)
+            all_failed_sets.extend(result.get("failed_sets", []))
+        else:
+            all_failed_sets.extend([str(s.id) for s in batch])
+    return num_sets, {"result": {"failed_sets": all_failed_sets, "trap_count": total_trap_count}}
 ```
 
 ---
