@@ -147,25 +147,46 @@ class RmwHubClient:
             if len(sets) < SEARCH_PAGE_SIZE:
                 break
 
-            # Advance start_datetime to the max when_updated_utc in this page
-            max_updated = max(
-                (s.get("when_updated_utc", "") for s in sets),
-                default="",
-            )
-            if not max_updated:
-                break
-
-            try:
-                next_start = dateutil_parser.isoparse(max_updated)
-                if next_start.tzinfo is None:
-                    next_start = next_start.replace(tzinfo=timezone.utc)
-                current_start = next_start
-            except (ValueError, TypeError):
-                logger.error(
-                    "Could not parse when_updated_utc for pagination: %s",
-                    max_updated,
+            # Detect pagination stall: every set on this page was already seen
+            if new_count == 0:
+                logger.warning(
+                    "No new sets on page %d — pagination cursor has not advanced, stopping",
+                    page,
                 )
                 break
+
+            # Advance start_datetime to the max when_updated_utc in this page.
+            # Parse each timestamp to a proper datetime before comparing, since
+            # string comparison can pick the wrong value when formats differ
+            # (e.g. "Z" vs "+00:00").
+            parsed_times = []
+            for s in sets:
+                raw = s.get("when_updated_utc", "")
+                if not raw:
+                    continue
+                try:
+                    dt = dateutil_parser.isoparse(raw)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    parsed_times.append(dt)
+                except (ValueError, TypeError):
+                    logger.error(
+                        "Could not parse when_updated_utc for pagination: %s",
+                        raw,
+                    )
+
+            if not parsed_times:
+                logger.error("No valid when_updated_utc found on page %d, stopping pagination", page)
+                break
+
+            next_start = max(parsed_times)
+            if next_start <= current_start:
+                logger.warning(
+                    "Pagination cursor did not advance (stuck at %s), stopping",
+                    current_start.isoformat(),
+                )
+                break
+            current_start = next_start
 
         logger.info(
             "Fetched %d total sets from RMW Hub across %d page(s)",

@@ -7,7 +7,7 @@ from uuid import uuid4
 import httpx
 from fastapi.encoders import jsonable_encoder
 
-from app.actions.rmwhub.client import RmwHubClient
+from app.actions.rmwhub.client import RmwHubClient, SEARCH_PAGE_SIZE
 from app.actions.rmwhub.types import GearSet, Trap
 
 
@@ -592,3 +592,170 @@ class TestRmwHubClient:
 
         assert result.status_code == 400
         assert mock_client.post.call_count == 1  # No retries
+
+
+def _make_sets(set_ids, when_updated_utc):
+    """Helper to build a list of minimal set dicts for search_hub_all tests."""
+    return [{"set_id": sid, "when_updated_utc": when_updated_utc} for sid in set_ids]
+
+
+def _search_response(sets):
+    """Helper to build a JSON response string from a list of set dicts."""
+    return json.dumps({"format_version": 0.1, "sets": sets})
+
+
+class TestSearchHubAll:
+    """Tests for RmwHubClient.search_hub_all pagination logic."""
+
+    @pytest.fixture
+    def client(self):
+        return RmwHubClient(api_key="test_api_key", rmw_url="https://test.rmwhub.com")
+
+    @pytest.fixture
+    def start_dt(self):
+        return datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+    @pytest.mark.asyncio
+    async def test_single_page_under_page_size(self, client, start_dt):
+        """A response with fewer sets than SEARCH_PAGE_SIZE ends pagination."""
+        sets = _make_sets(["s1", "s2"], "2024-01-02T00:00:00Z")
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.return_value = _search_response(sets)
+            result = await client.search_hub_all(start_dt)
+
+        assert len(result["sets"]) == 2
+        assert {s["set_id"] for s in result["sets"]} == {"s1", "s2"}
+        mock_search.assert_called_once_with(start_dt)
+
+    @pytest.mark.asyncio
+    async def test_multi_page_pagination(self, client, start_dt):
+        """Full pages advance the cursor; a short final page terminates."""
+        page1_sets = _make_sets(
+            [f"p1_{i}" for i in range(SEARCH_PAGE_SIZE)],
+            "2024-01-05T00:00:00Z",
+        )
+        page2_sets = _make_sets(["p2_0", "p2_1"], "2024-01-06T00:00:00Z")
+
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.side_effect = [
+                _search_response(page1_sets),
+                _search_response(page2_sets),
+            ]
+            result = await client.search_hub_all(start_dt)
+
+        assert len(result["sets"]) == SEARCH_PAGE_SIZE + 2
+        assert mock_search.call_count == 2
+        # Second call should use the advanced cursor
+        second_call_dt = mock_search.call_args_list[1][0][0]
+        assert second_call_dt == datetime(2024, 1, 5, tzinfo=timezone.utc)
+
+    @pytest.mark.asyncio
+    async def test_deduplication_across_pages(self, client, start_dt):
+        """Sets appearing on multiple pages are deduplicated by set_id."""
+        shared_id = "shared"
+        page1_sets = _make_sets(
+            [shared_id] + [f"p1_{i}" for i in range(SEARCH_PAGE_SIZE - 1)],
+            "2024-01-05T00:00:00Z",
+        )
+        page2_sets = _make_sets([shared_id, "p2_new"], "2024-01-06T00:00:00Z")
+
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.side_effect = [
+                _search_response(page1_sets),
+                _search_response(page2_sets),
+            ]
+            result = await client.search_hub_all(start_dt)
+
+        set_ids = [s["set_id"] for s in result["sets"]]
+        assert set_ids.count(shared_id) == 1
+        assert len(result["sets"]) == SEARCH_PAGE_SIZE + 1  # page1 + p2_new
+
+    @pytest.mark.asyncio
+    async def test_stall_detection_no_new_sets(self, client, start_dt):
+        """Stops when a full page contains only already-seen set_ids."""
+        same_sets = _make_sets(
+            [f"s{i}" for i in range(SEARCH_PAGE_SIZE)],
+            "2024-01-05T00:00:00Z",
+        )
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            # Return identical pages — second page has 0 new sets
+            mock_search.side_effect = [
+                _search_response(same_sets),
+                _search_response(same_sets),
+            ]
+            result = await client.search_hub_all(start_dt)
+
+        assert len(result["sets"]) == SEARCH_PAGE_SIZE
+        # Should stop after 2 calls (page 2 has new_count == 0)
+        assert mock_search.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_stall_detection_cursor_not_advancing(self, client, start_dt):
+        """Stops when max(when_updated_utc) doesn't exceed current cursor."""
+        # All timestamps equal the start — cursor can't advance
+        page_sets = _make_sets(
+            [f"s{i}" for i in range(SEARCH_PAGE_SIZE)],
+            start_dt.isoformat(),
+        )
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.return_value = _search_response(page_sets)
+            result = await client.search_hub_all(start_dt)
+
+        assert len(result["sets"]) == SEARCH_PAGE_SIZE
+        mock_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_sets_stops(self, client, start_dt):
+        """An empty sets array on the first page returns no data."""
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.return_value = _search_response([])
+            result = await client.search_hub_all(start_dt)
+
+        assert result["sets"] == []
+        mock_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_stops(self, client, start_dt):
+        """Non-JSON response stops pagination and returns what we have so far."""
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.return_value = "NOT VALID JSON"
+            result = await client.search_hub_all(start_dt)
+
+        assert result["sets"] == []
+
+    @pytest.mark.asyncio
+    async def test_mixed_timestamp_formats(self, client, start_dt):
+        """Cursor correctly picks the latest time across different ISO formats."""
+        sets = [
+            {"set_id": "a", "when_updated_utc": "2024-01-10T12:00:00Z"},
+            {"set_id": "b", "when_updated_utc": "2024-01-10T12:00:00+00:00"},
+            {"set_id": "c", "when_updated_utc": "2024-01-11T00:00:00Z"},  # latest
+        ]
+        # Pad to full page so pagination tries to continue
+        for i in range(SEARCH_PAGE_SIZE - len(sets)):
+            sets.append({"set_id": f"pad_{i}", "when_updated_utc": "2024-01-09T00:00:00Z"})
+
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.side_effect = [
+                _search_response(sets),
+                _search_response([]),  # second page empty
+            ]
+            result = await client.search_hub_all(start_dt)
+
+        assert mock_search.call_count == 2
+        second_call_dt = mock_search.call_args_list[1][0][0]
+        assert second_call_dt == datetime(2024, 1, 11, tzinfo=timezone.utc)
+
+    @pytest.mark.asyncio
+    async def test_unparseable_timestamps_stops(self, client, start_dt):
+        """If no when_updated_utc can be parsed, pagination stops safely."""
+        sets = _make_sets(
+            [f"s{i}" for i in range(SEARCH_PAGE_SIZE)],
+            "not-a-timestamp",
+        )
+        with patch.object(client, "search_hub", new_callable=AsyncMock) as mock_search:
+            mock_search.return_value = _search_response(sets)
+            result = await client.search_hub_all(start_dt)
+
+        assert len(result["sets"]) == SEARCH_PAGE_SIZE
+        mock_search.assert_called_once()

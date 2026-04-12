@@ -176,10 +176,10 @@ class GearSet(BaseModel):
 **Multi-trap sets**: Sets with any number of traps (e.g. three device gearsets) are supported. The download flow parses all traps and builds one gear payload per set for the Buoy API. When any device in a set is marked for haul, the **whole set** is hauled in Buoy (all devices in one haul payload) so the gearset never ends up in a partial state.
 
 #### trawl_path
-trawl_path (string | null)
+trawl_path (object | null)
 Optional path of the trawl deployment. This feature is still under development but will have
 the following proposed rules:
-* Trawl path as line string "trawl_path": {"type": "LineString", "coordinates": [ [“lat”,“long” ], [“lat”, “long”], …] }
+* Trawl path as a LineString: `”trawl_path”: {“type”: “LineString”, “coordinates”: [[-70.1234, 42.5678], [-70.1200, 42.5700]]}` (GeoJSON coordinate order is `[longitude, latitude]`)
 * First and last points of the trawl path array correspond to first and last trap locations of the gear set
 * Trawl path points are updated as the vessel goes along the path
 * Trawl path increment defined by distance with 100 m recommended as default increment
