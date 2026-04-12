@@ -228,19 +228,25 @@ RMW Hub may occasionally return the same `trap_id` more than once in a set (e.g.
 
 ### Timestamp Priority
 
-The `get_latest_update_time()` method determines the trap's recorded time:
+The `_create_gear_payload_from_gearset()` method determines `recorded_at` and `last_updated` for each device in the gear payload sent to the Buoy API.
 
 **For Deployed Status**:
 ```python
 recorded_at = deploy_datetime_utc or now()
+last_updated = when_updated_utc if when_updated_utc > deploy_datetime_utc else deploy_datetime_utc
 ```
 
-**For Retrieved Status**:
+`recorded_at` always uses the actual deployment time because ER/Buoy uses it as the `assigned_range` lower bound. `last_updated` may use the gearset's `when_updated_utc` (when it's later than the deploy time) so that location-only or set-move updates are recognized by the API.
+
+> **Why `recorded_at` must not use `when_updated_utc`**: ER/Buoy sets `assigned_range = [recorded_at, ...)` on deploy and `assigned_range = [..., recorded_at + 1s)` on haul. For trawls with very short deploy-to-retrieval windows, `when_updated_utc` (a metadata timestamp) can be later than `retrieved_datetime_utc` (the actual haul time). Inflating `recorded_at` to `when_updated_utc` on deploy would create an invalid range where `upper < lower`, leaving the device permanently stuck as "deployed."
+
+**For Retrieved/Hauled Status**:
 ```python
-recorded_at = retrieved_datetime_utc or surface_datetime_utc or deploy_datetime_utc or now()
+recorded_at = retrieved_datetime_utc or surface_datetime_utc or haul_fallback_time or deploy_datetime_utc or now()
+last_updated = recorded_at  # same priority chain
 ```
 
-**Priority**: `retrieved` > `surfaced` > `deployed` > `current time`
+**Priority**: `retrieved` > `surfaced` > `haul_fallback` > `deployed` > `current time`
 
 ---
 

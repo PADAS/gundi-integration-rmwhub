@@ -54,18 +54,20 @@ The devimage target includes debugpy on port 5678 for remote debugging.
 
 **Run all tests:**
 ```bash
-pytest
+.venv/bin/pytest
 ```
 
 **Run specific test file:**
 ```bash
-pytest app/actions/tests/test_rmwhub_adapter.py
+.venv/bin/pytest app/actions/tests/test_rmwhub_adapter.py
 ```
 
 **Run tests with coverage:**
 ```bash
-pytest --cov=app/actions --cov-report=html
+.venv/bin/pytest --cov=app/actions --cov-report=html
 ```
+
+**Note:** pytest is installed in the project's `.venv` virtual environment, not globally. Always use `.venv/bin/pytest` to run tests.
 
 **Test configuration (setup.cfg):**
 - Test paths: `app/actions/tests`

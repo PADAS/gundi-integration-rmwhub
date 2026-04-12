@@ -1086,8 +1086,9 @@ class TestRmwHubAdapter:
         assert len(result["devices"]) == 1
         device = result["devices"][0]
         assert "recorded_at" in device
-        # When gearset.when_updated_utc is after deploy time, use it so location/set updates are applied
-        assert device["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        # recorded_at must always use actual deploy time (not when_updated_utc) because ER/Buoy
+        # uses it as the assigned_range lower bound; inflating it can cause range inversions on haul.
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
         assert device["last_deployed"] == "2023-09-15T14:30:00+00:00"
         assert device["last_updated"] == "2023-09-15T18:00:00+00:00"
         assert device["device_status"] == "deployed"
@@ -1257,8 +1258,8 @@ class TestRmwHubAdapter:
         result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
         
         device = result["devices"][0]
-        # When gearset.when_updated_utc is after deploy, it is used (normalized to +00:00)
-        assert device["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        # recorded_at always uses actual deploy time, not when_updated_utc
+        assert device["recorded_at"] == "2023-09-15T14:30:00+00:00"
 
     def test_create_gear_payload_from_gearset_multiple_traps(self, adapter):
         """Test creating gear payload with multiple traps."""
@@ -1305,9 +1306,9 @@ class TestRmwHubAdapter:
         assert result["deployment_type"] == "trawl"
         assert result["devices_in_set"] == 2
         
-        # Each device uses gearset when_updated_utc when it's after deploy so location/set updates apply
-        assert result["devices"][0]["recorded_at"] == "2023-09-15T18:00:00+00:00"
-        assert result["devices"][1]["recorded_at"] == "2023-09-15T18:00:00+00:00"
+        # recorded_at always uses actual deploy time per device
+        assert result["devices"][0]["recorded_at"] == "2023-09-15T14:30:00+00:00"
+        assert result["devices"][1]["recorded_at"] == "2023-09-15T14:35:00+00:00"
         
         # Check release_type handling
         assert result["devices"][0]["release_type"] == "manual"
