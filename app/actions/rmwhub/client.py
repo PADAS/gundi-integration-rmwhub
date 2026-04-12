@@ -188,6 +188,14 @@ class RmwHubClient:
                 break
             current_start = next_start
 
+        if pages_fetched >= MAX_SEARCH_PAGES:
+            logger.warning(
+                "Reached MAX_SEARCH_PAGES (%d) — results may be incomplete. "
+                "Fetched %d sets so far; consider increasing MAX_SEARCH_PAGES or "
+                "narrowing the start_datetime window.",
+                MAX_SEARCH_PAGES,
+                len(all_sets),
+            )
         logger.info(
             "Fetched %d total sets from RMW Hub across %d page(s)",
             len(all_sets),

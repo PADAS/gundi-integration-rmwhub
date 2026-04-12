@@ -7,7 +7,7 @@ from uuid import uuid4
 import httpx
 from fastapi.encoders import jsonable_encoder
 
-from app.actions.rmwhub.client import RmwHubClient, SEARCH_PAGE_SIZE
+from app.actions.rmwhub.client import RmwHubClient, SEARCH_PAGE_SIZE, MAX_SEARCH_PAGES
 from app.actions.rmwhub.types import GearSet, Trap
 
 
@@ -745,6 +745,33 @@ class TestSearchHubAll:
         assert mock_search.call_count == 2
         second_call_dt = mock_search.call_args_list[1][0][0]
         assert second_call_dt == datetime(2024, 1, 11, tzinfo=timezone.utc)
+
+    @pytest.mark.asyncio
+    @patch("app.actions.rmwhub.client.MAX_SEARCH_PAGES", 3)
+    async def test_max_pages_exhausted_logs_warning(self, client, start_dt):
+        """Logs a warning when MAX_SEARCH_PAGES is reached with full pages."""
+        page_num = [0]
+
+        async def _next_page(dt):
+            page_num[0] += 1
+            sets = _make_sets(
+                [f"pg{page_num[0]}_{i}" for i in range(SEARCH_PAGE_SIZE)],
+                f"2024-01-{page_num[0] + 1:02d}T00:00:00Z",
+            )
+            return _search_response(sets)
+
+        with patch.object(client, "search_hub", side_effect=_next_page):
+            with patch("app.actions.rmwhub.client.logger") as mock_logger:
+                result = await client.search_hub_all(start_dt)
+
+        assert len(result["sets"]) == SEARCH_PAGE_SIZE * 3
+        mock_logger.warning.assert_any_call(
+            "Reached MAX_SEARCH_PAGES (%d) — results may be incomplete. "
+            "Fetched %d sets so far; consider increasing MAX_SEARCH_PAGES or "
+            "narrowing the start_datetime window.",
+            3,
+            SEARCH_PAGE_SIZE * 3,
+        )
 
     @pytest.mark.asyncio
     async def test_unparseable_timestamps_stops(self, client, start_dt):
