@@ -113,22 +113,20 @@ async def execute_action(integration_id: str, action_id: str, config_overrides: 
             timeout=settings.MAX_ACTION_EXECUTION_TIME
         )
     except asyncio.TimeoutError:
-        return await _handle_error(
-            asyncio.TimeoutError(f"Action '{action_id}' timed out"),
-            integration_id, action_id,
-            config_data={"configurations": [c.dict() for c in integration.configurations]},
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT
+        elapsed = time.monotonic() - start_time
+        message = (
+            f"Action '{action_id}' timed out for integration {integration_id} "
+            f"after {elapsed:.0f}s (limit: {settings.MAX_ACTION_EXECUTION_TIME}s)"
         )
-    except asyncio.TimeoutError:
-        message = f"Action '{action_id}' timed out for integration {integration_id} after {settings.MAX_ACTION_EXECUTION_TIME} seconds. Please consider splitting the workload in sub-actions."
-        logger.exception(message)
+        logger.error(message)
+        config_data = {"configurations": [c.dict() for c in integration.configurations]}
         await publish_event(
             event=IntegrationActionFailed(
                 payload=ActionExecutionFailed(
                     integration_id=integration_id,
                     action_id=action_id,
-                    config_data={"configurations": [c.dict() for c in integration.configurations]},
-                    error=message
+                    config_data=config_data,
+                    error=message,
                 )
             ),
             topic_name=settings.INTEGRATION_EVENTS_TOPIC,
