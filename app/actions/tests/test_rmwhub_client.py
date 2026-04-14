@@ -144,7 +144,7 @@ class TestRmwHubClient:
         
         # Verify error was logged
         mock_logger.error.assert_called_once_with(
-            "Failed to download data from RMW Hub API. Error: %s - %s",
+            "RMW Hub API error | POST /search_hub/ | HTTP %s: %s",
             400,
             '{"error": "Bad request"}',
         )
@@ -325,25 +325,27 @@ class TestRmwHubClient:
         # Mock the response with error
         mock_response = MagicMock()
         mock_response.status_code = 500
+        mock_response.text = '{"error": "Internal server error"}'
         mock_response.content = b'{"error": "Internal server error"}'
-        
+
         # Mock the async client
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_response
         mock_client_class.return_value.__aenter__.return_value = mock_client
-        
+
         # Call the method
         result = await client.upload_data([sample_gearset])
-        
+
         # Assertions
         assert result == mock_response
         assert result.status_code == 500
-        
-        # Verify error was logged
+
+        # Verify error was logged with structured format
         mock_logger.error.assert_called_once_with(
-            "Failed to upload data to RMW Hub API. Error: %s - %s",
+            "RMW Hub API error | POST /upload_deployments/ | HTTP %s: %s (set_ids=%s)",
             500,
-            b'{"error": "Internal server error"}',
+            '{"error": "Internal server error"}',
+            ["gearset_001"],
         )
     
     @pytest.mark.asyncio
@@ -503,18 +505,19 @@ class TestRmwHubClient:
     @pytest.mark.asyncio
     @patch('httpx.AsyncClient')
     async def test_search_hub_timeout(self, mock_client_class, client, sample_datetime):
-        """Test search_hub when request times out."""
+        """Test search_hub returns error JSON when request times out after retries."""
         # Mock the async client to raise a timeout exception
         mock_client = AsyncMock()
         mock_client.post.side_effect = httpx.ReadTimeout("Request timed out after 60 seconds")
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        # Call the method and expect the timeout exception to propagate
-        with pytest.raises(httpx.ReadTimeout) as exc_info:
-            await client.search_hub(start_datetime=sample_datetime)
+        # search_hub catches timeouts and returns a JSON error string
+        result = await client.search_hub(start_datetime=sample_datetime)
 
-        # Verify the exception message
-        assert "Request timed out" in str(exc_info.value)
+        import json
+        parsed = json.loads(result)
+        assert "error" in parsed
+        assert "timed out" in parsed["error"]
 
     @pytest.mark.asyncio
     @patch('httpx.AsyncClient')

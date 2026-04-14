@@ -334,8 +334,8 @@ class TestBuoyClient:
                 async for gear in client.iter_gears():
                     pass
             
-            assert "Failed to fetch gear from Buoy Gear API" in str(exc_info.value)
-            assert "Status code: 500" in str(exc_info.value)
+            assert "Buoy Gear API error" in str(exc_info.value)
+            assert "HTTP 500" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_iter_gears_missing_data_field(self, client):
@@ -621,8 +621,8 @@ class TestBuoyClient:
             with pytest.raises(RuntimeError) as exc_info:
                 await client.get_all_gears()
             
-            assert "Failed to fetch gear from Buoy Gear API" in str(exc_info.value)
-            assert "Status code: 500" in str(exc_info.value)
+            assert "Buoy Gear API error" in str(exc_info.value)
+            assert "HTTP 500" in str(exc_info.value)
 
     def test_parse_gear_device_defaults_mfr_device_id_to_empty_string(self, client):
         """Test that missing mfr_device_id defaults to empty string when parsing device data."""        
