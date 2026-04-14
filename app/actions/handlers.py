@@ -11,7 +11,7 @@ from app.services.activity_logger import activity_logger, log_action_activity
 from app.services.utils import find_config_for_action
 
 from .configurations import AuthenticateConfig, PullRmwHubObservationsConfiguration
-from .rmwhub import RmwHubAdapter
+from .rmwhub import RmwHubAdapter, RmwHubClient, GearSet
 from .buoy.types import Dict, Environment
 
 logger = logging.getLogger(__name__)
@@ -35,14 +35,16 @@ async def handle_download(
     end_datetime: datetime,
     integration: Integration,
     environment: Environment,
-    action_config: PullRmwHubObservationsConfiguration
+    action_config: PullRmwHubObservationsConfiguration,
+    rmw_sets: List[GearSet] = None,
 ) -> Dict:
+    if rmw_sets is None:
+        logger.info(
+            f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
+        )
+        rmw_sets = await rmw_adapter.download_data(start_datetime)
     logger.info(
-        f"Downloading data from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
-    )
-    rmw_sets = await rmw_adapter.download_data(start_datetime)
-    logger.info(
-        f"{len(rmw_sets)} Gearsets Downloaded from RMW Hub API...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
+        f"{len(rmw_sets)} Gearsets to process for {environment}...For the datetimes: {start_datetime.isoformat()} - {end_datetime.isoformat()}"
     )
 
     await log_action_activity(
@@ -178,25 +180,37 @@ async def action_pull_observations(
 
     _client = GundiClient()
     connection_details = await _client.get_connection_details(integration.id)
-    
+
     # Get the auth config from the integration (not from action_config)
     auth_config_data = find_config_for_action(
         configurations=integration.configurations, action_id="auth"
     )
     auth_config = AuthenticateConfig.parse_obj(auth_config_data.data)
     er_token = auth_config.er_token.get_secret_value()
-    
+
+    # Download from RMW Hub once and share across all destinations
+    rmw_client = RmwHubClient(
+        api_key=action_config.api_key.get_secret_value(),
+        rmw_url=action_config.rmw_url,
+    )
+    rmw_sets = await rmw_client.download_and_convert(start_datetime)
+    logger.info(
+        "Downloaded %d gearsets from RMW Hub (will process for %d destinations)",
+        len(rmw_sets), len(connection_details.destinations),
+    )
+
     destination_result = {}
-    
+
     for destination in connection_details.destinations:
         environment = Environment(destination.name)
-        
+
         # Get destination base URL
         destination_details = await _client.get_integration_details(destination.id)
         er_destination = destination_details.base_url
 
         logger.info(
-            f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."
+            "Processing rmwHub data for EarthRanger destination: %s...",
+            environment,
         )
 
         rmw_adapter = RmwHubAdapter(
@@ -207,9 +221,15 @@ async def action_pull_observations(
             er_destination + "api/v1.0"
         )
 
-        download_result = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
-        num_sets = await handle_upload(rmw_adapter, start_datetime, integration, action_config)
-        
+        download_result = await handle_download(
+            rmw_adapter, start_datetime, end_datetime,
+            integration, environment, action_config,
+            rmw_sets=rmw_sets,
+        )
+        num_sets = await handle_upload(
+            rmw_adapter, start_datetime, integration, action_config,
+        )
+
         destination_key = f"{destination.id}_{destination.name}"
         destination_result[destination_key] = {
             "gear_payloads_total": download_result["total"],
@@ -232,25 +252,37 @@ async def action_pull_observations_24_hour_sync(
 
     _client = GundiClient()
     connection_details = await _client.get_connection_details(integration.id)
-    
+
     # Get the auth config from the integration (not from action_config)
     auth_config_data = find_config_for_action(
         configurations=integration.configurations, action_id="auth"
     )
     auth_config = AuthenticateConfig.parse_obj(auth_config_data.data)
     er_token = auth_config.er_token.get_secret_value()
-    
+
+    # Download from RMW Hub once and share across all destinations
+    rmw_client = RmwHubClient(
+        api_key=action_config.api_key.get_secret_value(),
+        rmw_url=action_config.rmw_url,
+    )
+    rmw_sets = await rmw_client.download_and_convert(start_datetime)
+    logger.info(
+        "Downloaded %d gearsets from RMW Hub (will process for %d destinations)",
+        len(rmw_sets), len(connection_details.destinations),
+    )
+
     destination_result = {}
-    
+
     for destination in connection_details.destinations:
         environment = Environment(destination.name)
-        
+
         # Get destination base URL
         destination_details = await _client.get_integration_details(destination.id)
         er_destination = destination_details.base_url
 
         logger.info(
-            f"Downloading data from rmwHub to the Earthranger destination: {str(environment)}..."
+            "Processing rmwHub data for EarthRanger destination: %s...",
+            environment,
         )
 
         rmw_adapter = RmwHubAdapter(
@@ -261,9 +293,15 @@ async def action_pull_observations_24_hour_sync(
             er_destination + "api/v1.0"
         )
 
-        download_result = await handle_download(rmw_adapter, start_datetime, end_datetime, integration, environment, action_config)
-        num_sets = await handle_upload(rmw_adapter, start_datetime, integration, action_config)
-        
+        download_result = await handle_download(
+            rmw_adapter, start_datetime, end_datetime,
+            integration, environment, action_config,
+            rmw_sets=rmw_sets,
+        )
+        num_sets = await handle_upload(
+            rmw_adapter, start_datetime, integration, action_config,
+        )
+
         destination_key = f"{destination.id}_{destination.name}"
         destination_result[destination_key] = {
             "gear_payloads_total": download_result["total"],

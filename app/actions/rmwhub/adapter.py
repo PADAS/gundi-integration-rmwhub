@@ -205,7 +205,8 @@ class RmwHubAdapter:
         
         return rmwsets
 
-    def convert_to_sets(self, response_json: dict) -> List[GearSet]:
+    @staticmethod
+    def convert_to_sets(response_json: dict) -> List[GearSet]:
         if "sets" not in response_json:
             logger.error("Failed to download data from RMW Hub API.")
             return []
@@ -554,7 +555,11 @@ class RmwHubAdapter:
         params['page_size'] = ER_GEAR_PAGE_SIZE
         if state:
             params['state'] = state
-        
+        if start_datetime:
+            params['updated_since'] = start_datetime.astimezone(
+                timezone.utc
+            ).isoformat()
+
         async for gear in self.gear_client.iter_gears(params=params):
             yield gear
 

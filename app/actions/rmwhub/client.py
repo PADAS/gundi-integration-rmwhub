@@ -240,6 +240,21 @@ class RmwHubClient:
         )
         return {"format_version": 0.1, "sets": all_sets}
 
+    async def download_and_convert(
+        self, start_datetime: datetime
+    ) -> List[GearSet]:
+        """
+        Download gear sets from RMW Hub and convert to GearSet objects.
+
+        This is a convenience method for callers that need the parsed data
+        without going through an RmwHubAdapter (e.g. downloading once and
+        sharing the result across multiple destinations).
+        """
+        from .adapter import RmwHubAdapter
+
+        response_json = await self.search_hub_all(start_datetime)
+        return RmwHubAdapter.convert_to_sets(response_json)
+
     async def upload_data(self, updates: List[GearSet]) -> httpx.Response:
         """
         Upload data to the RMWHub API using the upload_data endpoint.
