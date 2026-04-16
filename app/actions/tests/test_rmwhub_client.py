@@ -503,8 +503,9 @@ class TestRmwHubClient:
         assert "Request timed out" in str(exc_info.value)
 
     @pytest.mark.asyncio
+    @patch('app.actions.rmwhub.client.asyncio.sleep', new_callable=AsyncMock)
     @patch('httpx.AsyncClient')
-    async def test_search_hub_timeout(self, mock_client_class, client, sample_datetime):
+    async def test_search_hub_timeout(self, mock_client_class, mock_sleep, client, sample_datetime):
         """Test search_hub returns error JSON when request times out after retries."""
         # Mock the async client to raise a timeout exception
         mock_client = AsyncMock()

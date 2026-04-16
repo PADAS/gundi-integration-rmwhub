@@ -388,7 +388,7 @@ async def process_upload(self, start_datetime: datetime) -> Tuple[int, dict]:
             all_failed_sets.extend(result.get("failed_sets", []))
         else:
             all_failed_sets.extend([str(s.id) for s in batch])
-    return num_sets, {"result": {"failed_sets": all_failed_sets, "trap_count": total_trap_count}}
+    return total_trap_count, {"result": {"failed_sets": all_failed_sets, "trap_count": total_trap_count}}
 ```
 
 ---
