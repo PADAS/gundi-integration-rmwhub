@@ -120,7 +120,6 @@ class BuoyClient:
         
         async with httpx.AsyncClient(timeout=client_timeout) as client:
             while url:
-                last_exception = None
                 response = None
                 for attempt in range(1, RETRY_COUNT + 1):
                     try:
@@ -130,7 +129,6 @@ class BuoyClient:
                             "Buoy Gear API error | GET /gear/ | %s: request timed out (timeout=%s)",
                             type(e).__name__, client_timeout.read,
                         )
-                        last_exception = e
                         if attempt < RETRY_COUNT:
                             logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
                             await asyncio.sleep(RETRY_DELAY_SEC)
@@ -141,7 +139,6 @@ class BuoyClient:
                             "Buoy Gear API error | GET /gear/ | %s: %s",
                             type(e).__name__, e,
                         )
-                        last_exception = e
                         if attempt < RETRY_COUNT:
                             logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
                             await asyncio.sleep(RETRY_DELAY_SEC)

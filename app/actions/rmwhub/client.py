@@ -69,66 +69,59 @@ class RmwHubClient:
 
         url = self.rmw_url + "/search_hub/"
 
-        try:
-            async with httpx.AsyncClient(timeout=self.default_timeout) as client:
-                last_response: httpx.Response | None = None
-                for attempt in range(1, RETRY_COUNT + 1):
-                    try:
-                        response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
-                    except httpx.TimeoutException as e:
-                        logger.error(
-                            "RMW Hub API error | POST /search_hub/ | %s: request timed out (timeout=%s)",
-                            type(e).__name__, self.default_timeout.read,
-                        )
-                        if attempt < RETRY_COUNT:
-                            logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
-                            await asyncio.sleep(RETRY_DELAY_SEC)
-                            continue
-                        return json.dumps({"error": f"Request timed out after {RETRY_COUNT} attempts"})
-                    except httpx.HTTPError as e:
-                        logger.error(
-                            "RMW Hub API error | POST /search_hub/ | %s: %s",
-                            type(e).__name__, e,
-                        )
-                        if attempt < RETRY_COUNT:
-                            logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
-                            await asyncio.sleep(RETRY_DELAY_SEC)
-                            continue
-                        return json.dumps({"error": f"Connection failed after {RETRY_COUNT} attempts: {type(e).__name__}"})
-
-                    last_response = response
-                    if response.status_code == 200:
-                        return response.text
-                    if response.status_code not in RETRYABLE_STATUS_CODES:
-                        logger.error(
-                            "RMW Hub API error | POST /search_hub/ | HTTP %s: %s",
-                            response.status_code,
-                            response.text[:500],
-                        )
-                        return response.text
+        async with httpx.AsyncClient(timeout=self.default_timeout) as client:
+            last_response: httpx.Response | None = None
+            for attempt in range(1, RETRY_COUNT + 1):
+                try:
+                    response = await client.post(url, headers=RmwHubClient.HEADERS, json=data)
+                except httpx.TimeoutException as e:
+                    logger.error(
+                        "RMW Hub API error | POST /search_hub/ | %s: request timed out (timeout=%s)",
+                        type(e).__name__, self.default_timeout.read,
+                    )
                     if attempt < RETRY_COUNT:
-                        logger.warning(
-                            "RMW Hub API error | POST /search_hub/ | HTTP %s (attempt %d/%d), retrying in %ds...",
-                            response.status_code,
-                            attempt,
-                            RETRY_COUNT,
-                            RETRY_DELAY_SEC,
-                        )
+                        logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
                         await asyncio.sleep(RETRY_DELAY_SEC)
-                    else:
-                        logger.error(
-                            "RMW Hub API error | POST /search_hub/ | HTTP %s after %d attempts: %s",
-                            response.status_code,
-                            RETRY_COUNT,
-                            response.text[:500],
-                        )
-                return last_response.text
-        except Exception as e:
-            logger.error(
-                "RMW Hub API error | POST /search_hub/ | Unexpected %s: %s",
-                type(e).__name__, e,
-            )
-            return json.dumps({"error": f"Unexpected error: {type(e).__name__}: {e}"})
+                        continue
+                    raise
+                except httpx.HTTPError as e:
+                    logger.error(
+                        "RMW Hub API error | POST /search_hub/ | %s: %s",
+                        type(e).__name__, e,
+                    )
+                    if attempt < RETRY_COUNT:
+                        logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
+                        await asyncio.sleep(RETRY_DELAY_SEC)
+                        continue
+                    raise
+
+                last_response = response
+                if response.status_code == 200:
+                    return response.text
+                if response.status_code not in RETRYABLE_STATUS_CODES:
+                    logger.error(
+                        "RMW Hub API error | POST /search_hub/ | HTTP %s: %s",
+                        response.status_code,
+                        response.text[:500],
+                    )
+                    return response.text
+                if attempt < RETRY_COUNT:
+                    logger.warning(
+                        "RMW Hub API error | POST /search_hub/ | HTTP %s (attempt %d/%d), retrying in %ds...",
+                        response.status_code,
+                        attempt,
+                        RETRY_COUNT,
+                        RETRY_DELAY_SEC,
+                    )
+                    await asyncio.sleep(RETRY_DELAY_SEC)
+                else:
+                    logger.error(
+                        "RMW Hub API error | POST /search_hub/ | HTTP %s after %d attempts: %s",
+                        response.status_code,
+                        RETRY_COUNT,
+                        response.text[:500],
+                    )
+            return last_response.text
 
     async def search_hub_all(self, start_datetime: datetime) -> Dict:
         """

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from gundi_client_v2 import GundiClient
 from gundi_core.events import LogLevel
@@ -36,7 +36,7 @@ async def handle_download(
     integration: Integration,
     environment: Environment,
     action_config: PullRmwHubObservationsConfiguration,
-    rmw_sets: List[GearSet] = None,
+    rmw_sets: Optional[List[GearSet]] = None,
 ) -> Dict:
     if rmw_sets is None:
         logger.info(

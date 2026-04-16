@@ -506,19 +506,17 @@ class TestRmwHubClient:
     @patch('app.actions.rmwhub.client.asyncio.sleep', new_callable=AsyncMock)
     @patch('httpx.AsyncClient')
     async def test_search_hub_timeout(self, mock_client_class, mock_sleep, client, sample_datetime):
-        """Test search_hub returns error JSON when request times out after retries."""
+        """Test search_hub raises after exhausting retries on timeout."""
         # Mock the async client to raise a timeout exception
         mock_client = AsyncMock()
         mock_client.post.side_effect = httpx.ReadTimeout("Request timed out after 60 seconds")
         mock_client_class.return_value.__aenter__.return_value = mock_client
 
-        # search_hub catches timeouts and returns a JSON error string
-        result = await client.search_hub(start_datetime=sample_datetime)
+        with pytest.raises(httpx.ReadTimeout):
+            await client.search_hub(start_datetime=sample_datetime)
 
-        import json
-        parsed = json.loads(result)
-        assert "error" in parsed
-        assert "timed out" in parsed["error"]
+        assert mock_client.post.call_count == 3  # RETRY_COUNT
+        assert mock_sleep.call_count == 2  # RETRY_COUNT - 1
 
     @pytest.mark.asyncio
     @patch('httpx.AsyncClient')
