@@ -20,7 +20,7 @@ RETRYABLE_STATUS_CODES = (502, 503, 504)
 
 # Pagination configuration for search_hub
 SEARCH_PAGE_SIZE = 1000
-MAX_SEARCH_PAGES = 20
+MAX_SEARCH_PAGES = 40
 
 
 class RmwHubClient:

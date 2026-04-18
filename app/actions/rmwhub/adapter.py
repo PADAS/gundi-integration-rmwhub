@@ -29,8 +29,7 @@ RMWHUB_MANUFACTURER = "rmwhub"
 LOCATION_TOLERANCE_DEGREES = 0.0001
 
 # Page size for iterating over gears in EarthRanger.
-# Reduced from the default 1000 to mitigate timeouts and memory usage during sync.
-ER_GEAR_PAGE_SIZE = 100
+ER_GEAR_PAGE_SIZE = 500
 
 
 def _ensure_tz_utc(dt_str: str) -> str:
