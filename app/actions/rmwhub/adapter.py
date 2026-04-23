@@ -29,8 +29,7 @@ RMWHUB_MANUFACTURER = "rmwhub"
 LOCATION_TOLERANCE_DEGREES = 0.0001
 
 # Page size for iterating over gears in EarthRanger.
-# Reduced from the default 1000 to mitigate timeouts and memory usage during sync.
-ER_GEAR_PAGE_SIZE = 100
+ER_GEAR_PAGE_SIZE = 500
 
 
 def _ensure_tz_utc(dt_str: str) -> str:
@@ -157,6 +156,9 @@ class RmwHubAdapter:
             default_timeout=kwargs.get('rmw_timeout', 120.0),
             connect_timeout=kwargs.get('rmw_connect_timeout', 10.0),
             read_timeout=kwargs.get('rmw_read_timeout', 120.0),
+            upload_timeout=kwargs.get('rmw_upload_timeout', 300.0),
+            upload_connect_timeout=kwargs.get('rmw_upload_connect_timeout', 10.0),
+            upload_read_timeout=kwargs.get('rmw_upload_read_timeout', 300.0),
         )
         self.gear_client = BuoyClient(
             er_token,
@@ -202,7 +204,8 @@ class RmwHubAdapter:
         
         return rmwsets
 
-    def convert_to_sets(self, response_json: dict) -> List[GearSet]:
+    @staticmethod
+    def convert_to_sets(response_json: dict) -> List[GearSet]:
         if "sets" not in response_json:
             logger.error("Failed to download data from RMW Hub API.")
             return []
@@ -551,7 +554,11 @@ class RmwHubAdapter:
         params['page_size'] = ER_GEAR_PAGE_SIZE
         if state:
             params['state'] = state
-        
+        if start_datetime:
+            params['updated_since'] = start_datetime.astimezone(
+                timezone.utc
+            ).isoformat()
+
         async for gear in self.gear_client.iter_gears(params=params):
             yield gear
 
@@ -624,8 +631,8 @@ class RmwHubAdapter:
 
             if rmw_updates:
                 try:
-                    # Upload updates to RMW Hub in batches of 10
-                    batch_size = 10
+                    # Upload updates to RMW Hub in batches of 5
+                    batch_size = 5
                     total_trap_count = 0
                     all_failed_sets = []
                     
@@ -651,7 +658,9 @@ class RmwHubAdapter:
                             if failed_sets:
                                 logger.warning(f"Batch {batch_num}: Failed to upload {len(failed_sets)} sets: {failed_sets}")
                         else:
+                            batch_set_ids = [str(s.id) for s in batch]
                             logger.error(f"Batch {batch_num} upload failed with status {response.status_code}")
+                            all_failed_sets.extend(batch_set_ids)
                             await log_action_activity(
                                 integration_id=self.integration_uuid,
                                 action_id="pull_observations",

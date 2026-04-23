@@ -5,7 +5,7 @@ from datetime import datetime
 from unittest.mock import Mock, AsyncMock, patch
 from urllib.parse import urljoin
 
-from app.actions.buoy.client import BuoyClient
+from app.actions.buoy.client import BuoyClient, RETRY_COUNT, RETRY_DELAY_SEC
 from app.actions.buoy.types import BuoyGear, BuoyDevice, DeviceLocation
 
 
@@ -334,8 +334,8 @@ class TestBuoyClient:
                 async for gear in client.iter_gears():
                     pass
             
-            assert "Failed to fetch gear from Buoy Gear API" in str(exc_info.value)
-            assert "Status code: 500" in str(exc_info.value)
+            assert "Buoy Gear API error" in str(exc_info.value)
+            assert "HTTP 500" in str(exc_info.value)
     
     @pytest.mark.asyncio
     async def test_iter_gears_missing_data_field(self, client):
@@ -621,8 +621,8 @@ class TestBuoyClient:
             with pytest.raises(RuntimeError) as exc_info:
                 await client.get_all_gears()
             
-            assert "Failed to fetch gear from Buoy Gear API" in str(exc_info.value)
-            assert "Status code: 500" in str(exc_info.value)
+            assert "Buoy Gear API error" in str(exc_info.value)
+            assert "HTTP 500" in str(exc_info.value)
 
     def test_parse_gear_device_defaults_mfr_device_id_to_empty_string(self, client):
         """Test that missing mfr_device_id defaults to empty string when parsing device data."""        
@@ -667,7 +667,120 @@ class TestBuoyClient:
                 "last_deployed": None  # Explicitly None
             }]
         }
-        
+
         gear = client._parse_gear(data)
         assert len(gear.devices) == 1
         assert gear.devices[0].last_deployed is None
+
+    @pytest.mark.asyncio
+    @patch('app.actions.buoy.client.asyncio.sleep', new_callable=AsyncMock)
+    async def test_iter_gears_timeout_retry_then_success(self, mock_sleep, client, api_response):
+        """Test iter_gears retries on timeout and succeeds."""
+        mock_ok_response = Mock()
+        mock_ok_response.status_code = 200
+        mock_ok_response.json.return_value = api_response
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.side_effect = [
+                httpx.ReadTimeout("timed out"),
+                mock_ok_response,
+            ]
+            mock_client_class.return_value = mock_client
+
+            gears = []
+            async for gear in client.iter_gears():
+                gears.append(gear)
+
+            assert len(gears) == 1
+            assert mock_client.get.call_count == 2
+            mock_sleep.assert_called_once_with(RETRY_DELAY_SEC)
+
+    @pytest.mark.asyncio
+    @patch('app.actions.buoy.client.asyncio.sleep', new_callable=AsyncMock)
+    async def test_iter_gears_timeout_retry_exhausted(self, mock_sleep, client):
+        """Test iter_gears raises after exhausting retries on timeout."""
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.side_effect = httpx.ReadTimeout("timed out")
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(httpx.ReadTimeout):
+                async for gear in client.iter_gears():
+                    pass
+
+            assert mock_client.get.call_count == RETRY_COUNT
+            assert mock_sleep.call_count == RETRY_COUNT - 1
+
+    @pytest.mark.asyncio
+    @patch('app.actions.buoy.client.asyncio.sleep', new_callable=AsyncMock)
+    async def test_iter_gears_502_retry_then_success(self, mock_sleep, client, api_response):
+        """Test iter_gears retries on 502 and succeeds."""
+        mock_502 = Mock()
+        mock_502.status_code = 502
+        mock_502.text = "Bad Gateway"
+
+        mock_ok = Mock()
+        mock_ok.status_code = 200
+        mock_ok.json.return_value = api_response
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.side_effect = [mock_502, mock_ok]
+            mock_client_class.return_value = mock_client
+
+            gears = []
+            async for gear in client.iter_gears():
+                gears.append(gear)
+
+            assert len(gears) == 1
+            assert mock_client.get.call_count == 2
+            mock_sleep.assert_called_once_with(RETRY_DELAY_SEC)
+
+    @pytest.mark.asyncio
+    @patch('app.actions.buoy.client.asyncio.sleep', new_callable=AsyncMock)
+    async def test_iter_gears_retryable_status_exhausted(self, mock_sleep, client):
+        """Test iter_gears raises after exhausting retries on 503."""
+        mock_503 = Mock()
+        mock_503.status_code = 503
+        mock_503.text = "Service Unavailable"
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_503
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(RuntimeError, match=f"after {RETRY_COUNT} attempts"):
+                async for gear in client.iter_gears():
+                    pass
+
+            assert mock_client.get.call_count == RETRY_COUNT
+            assert mock_sleep.call_count == RETRY_COUNT - 1
+
+    @pytest.mark.asyncio
+    async def test_iter_gears_non_retryable_status_no_retry(self, client):
+        """Test iter_gears does not retry on non-retryable status like 400."""
+        mock_400 = Mock()
+        mock_400.status_code = 400
+        mock_400.text = "Bad Request"
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_400
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(RuntimeError, match="HTTP 400"):
+                async for gear in client.iter_gears():
+                    pass
+
+            assert mock_client.get.call_count == 1
