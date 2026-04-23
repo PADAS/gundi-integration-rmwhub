@@ -248,6 +248,8 @@ last_updated = recorded_at  # same priority chain
 
 **Priority**: `retrieved` > `surfaced` > `haul_fallback` > `deployed` > `current time`
 
+> **Legacy records and haul rejections**: Some ER gear created before the current `recorded_at` logic have `last_deployed` stamped with the sync-run time instead of `trap.deploy_datetime_utc`. When RMW Hub later marks such a set retrieved with a `retrieved_datetime_utc` that predates the ER sync time, the haul payload's `recorded_at` lands before ER's `last_deployed`, producing an invalid `assigned_range` (upper < lower) and the Buoy API rejects the haul with **HTTP 500: `range lower bound must be less than or equal to range upper bound`** (the underlying PostgreSQL `tstzrange` error). Example: set `819B84A8-0DAF-4B3B-B4C1-EE2174B31EAA` — ER `last_deployed` = 2025-12-15T20:03:31Z, RMW Hub `retrieved_datetime_utc` = 2025-11-20T16:57:05Z. New records created by the current adapter are not affected; to unstick a legacy record, either bump RMW Hub's `retrieved_datetime_utc` forward or nudge ER's `last_deployed` back.
+
 ---
 
 ## Record Filtering
