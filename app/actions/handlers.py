@@ -167,7 +167,7 @@ async def handle_upload(
 
 
 @activity_logger()
-@crontab_schedule("*/3 * * * *")  # Run every 3 minutes
+@crontab_schedule("*/2 * * * *")  # Run every 2 minutes
 async def action_pull_observations(
     integration, action_config: PullRmwHubObservationsConfiguration
 ):
