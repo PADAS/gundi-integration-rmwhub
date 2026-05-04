@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Optional, Dict, Any, AsyncIterator
 from datetime import datetime
@@ -8,6 +9,11 @@ import aiohttp
 from .types import BuoyGear, BuoyDevice, DeviceLocation
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for transient Buoy API failures
+RETRY_COUNT = 3
+RETRY_DELAY_SEC = 5
+RETRYABLE_STATUS_CODES = (502, 503, 504)
 
 class BuoyClient:
     """Client for interacting with EarthRanger Gear API."""
@@ -114,12 +120,55 @@ class BuoyClient:
         
         async with httpx.AsyncClient(timeout=client_timeout) as client:
             while url:
-                response = await client.get(url, headers=self.headers, params=params)
-                
-                if response.status_code != 200:
-                    raise RuntimeError(
-                        f"Failed to fetch gear from Buoy Gear API. Status code: {response.status_code} Body: {response.text}"
-                    )
+                response = None
+                for attempt in range(1, RETRY_COUNT + 1):
+                    try:
+                        response = await client.get(url, headers=self.headers, params=params)
+                    except httpx.TimeoutException as e:
+                        logger.error(
+                            "Buoy Gear API error | GET /gear/ | %s: request timed out (timeout=%s)",
+                            type(e).__name__, client_timeout.read,
+                        )
+                        if attempt < RETRY_COUNT:
+                            logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
+                            await asyncio.sleep(RETRY_DELAY_SEC)
+                            continue
+                        raise
+                    except httpx.HTTPError as e:
+                        logger.error(
+                            "Buoy Gear API error | GET /gear/ | %s: %s",
+                            type(e).__name__, e,
+                        )
+                        if attempt < RETRY_COUNT:
+                            logger.warning("Retrying (attempt %d/%d) in %ds...", attempt, RETRY_COUNT, RETRY_DELAY_SEC)
+                            await asyncio.sleep(RETRY_DELAY_SEC)
+                            continue
+                        raise
+
+                    if response.status_code == 200:
+                        break
+                    if response.status_code not in RETRYABLE_STATUS_CODES:
+                        logger.error(
+                            "Buoy Gear API error | GET /gear/ | HTTP %s: %s",
+                            response.status_code, response.text[:500],
+                        )
+                        raise RuntimeError(
+                            f"Buoy Gear API error | GET /gear/ | HTTP {response.status_code}: {response.text[:500]}"
+                        )
+                    if attempt < RETRY_COUNT:
+                        logger.warning(
+                            "Buoy Gear API error | GET /gear/ | HTTP %s (attempt %d/%d), retrying in %ds...",
+                            response.status_code, attempt, RETRY_COUNT, RETRY_DELAY_SEC,
+                        )
+                        await asyncio.sleep(RETRY_DELAY_SEC)
+                    else:
+                        logger.error(
+                            "Buoy Gear API error | GET /gear/ | HTTP %s after %d attempts: %s",
+                            response.status_code, RETRY_COUNT, response.text[:500],
+                        )
+                        raise RuntimeError(
+                            f"Buoy Gear API error | GET /gear/ | HTTP {response.status_code} after {RETRY_COUNT} attempts: {response.text[:500]}"
+                        )
 
                 data = response.json()
 
@@ -220,6 +269,7 @@ class BuoyClient:
         url = urljoin(self.er_site, "gear/")
         client_timeout = timeout or self.default_timeout
 
+        set_id = gear_payload.get("set_id", "unknown")
         async with httpx.AsyncClient(timeout=client_timeout) as client:
             try:
                 response = await client.post(url, json=gear_payload, headers=self.headers)
@@ -229,9 +279,19 @@ class BuoyClient:
                     return {"status": "success", "status_code": response.status_code, "response": response_text}
                 else:
                     logger.error(
-                        f"Failed to send gear set to Buoy API. Status: {response.status_code}, Response: {response_text}"
+                        "Buoy Gear API error | POST /gear/ | HTTP %s: %s (set_id=%s)",
+                        response.status_code, response_text[:500], set_id,
                     )
                     return {"status": "error", "status_code": response.status_code, "response": response_text}
+            except httpx.TimeoutException as e:
+                logger.error(
+                    "Buoy Gear API error | POST /gear/ | %s: request timed out (timeout=%s, set_id=%s)",
+                    type(e).__name__, client_timeout.read, set_id,
+                )
+                return {"status": "error", "error": str(e)}
             except httpx.HTTPError as e:
-                logger.exception("Exception while sending gear to Buoy API")
+                logger.error(
+                    "Buoy Gear API error | POST /gear/ | %s: %s (set_id=%s)",
+                    type(e).__name__, e, set_id,
+                )
                 return {"status": "error", "error": str(e)}

@@ -130,7 +130,10 @@ class TestRmwHubAdapter:
                 "https://test.rmwhub.com",
                 default_timeout=120.0,
                 connect_timeout=10.0,
-                read_timeout=120.0
+                read_timeout=120.0,
+                upload_timeout=300.0,
+                upload_connect_timeout=10.0,
+                upload_read_timeout=300.0,
             )
             mock_gear_client_class.assert_called_once()
 
@@ -516,11 +519,13 @@ class TestRmwHubAdapter:
             adapter.rmw_client.upload_data = AsyncMock(return_value=mock_response)
             
             trap_count, response_data = await adapter.process_upload(start_datetime)
-            
+
             assert trap_count == 0
-            assert response_data == {'result': {'failed_sets': [], 'trap_count': 0}}
+            # Non-200 batches now track their set_ids as failed
+            assert len(response_data['result']['failed_sets']) == 2
+            assert response_data['result']['trap_count'] == 0
             # Should have logged error
-            error_calls = [call for call in mock_log.call_args_list if 
+            error_calls = [call for call in mock_log.call_args_list if
                           call[1].get('level') == LogLevel.ERROR]
             assert len(error_calls) > 0
 

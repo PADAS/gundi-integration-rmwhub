@@ -248,6 +248,8 @@ last_updated = recorded_at  # same priority chain
 
 **Priority**: `retrieved` > `surfaced` > `haul_fallback` > `deployed` > `current time`
 
+> **Legacy records and haul rejections**: Some ER gear created before the current `recorded_at` logic have `last_deployed` stamped with the sync-run time instead of `trap.deploy_datetime_utc`. When RMW Hub later marks such a set retrieved with a `retrieved_datetime_utc` that predates the ER sync time, the haul payload's `recorded_at` lands before ER's `last_deployed`, producing an invalid `assigned_range` (upper < lower) and the Buoy API rejects the haul with **HTTP 500: `range lower bound must be less than or equal to range upper bound`** (the underlying PostgreSQL `tstzrange` error). Example: set `819B84A8-0DAF-4B3B-B4C1-EE2174B31EAA` — ER `last_deployed` = 2025-12-15T20:03:31Z, RMW Hub `retrieved_datetime_utc` = 2025-11-20T16:57:05Z. New records created by the current adapter are not affected; to unstick a legacy record, either bump RMW Hub's `retrieved_datetime_utc` forward or nudge ER's `last_deployed` back.
+
 ---
 
 ## Record Filtering
@@ -375,9 +377,20 @@ async def process_upload(self, start_datetime: datetime) -> Tuple[int, dict]:
         if rmw_update:
             rmw_updates.append(rmw_update)
     
-    # Upload to RMW Hub
-    response = await self.rmw_client.upload_data(rmw_updates)
-    return trap_count, response_data
+    # Upload to RMW Hub in batches of 5
+    batch_size = 5
+    total_trap_count = 0
+    all_failed_sets = []
+    for i in range(0, len(rmw_updates), batch_size):
+        batch = rmw_updates[i:i + batch_size]
+        response = await self.rmw_client.upload_data(batch)
+        if response.status_code == 200:
+            result = response.json().get("result", {})
+            total_trap_count += result.get("trap_count", 0)
+            all_failed_sets.extend(result.get("failed_sets", []))
+        else:
+            all_failed_sets.extend([str(s.id) for s in batch])
+    return total_trap_count, {"result": {"failed_sets": all_failed_sets, "trap_count": total_trap_count}}
 ```
 
 ---
@@ -1165,13 +1178,16 @@ class PullRmwHubObservationsConfiguration:
 
 ```python
 RmwHubAdapter(
-    rmw_timeout=120.0,           # Total request timeout (default)
-    rmw_connect_timeout=10.0,    # Connection timeout
-    rmw_read_timeout=120.0       # Read timeout
+    rmw_timeout=120.0,                # Total request timeout (search_hub)
+    rmw_connect_timeout=10.0,         # Connection timeout (search_hub)
+    rmw_read_timeout=120.0,           # Read timeout (search_hub)
+    rmw_upload_timeout=300.0,         # Total request timeout (upload_data)
+    rmw_upload_connect_timeout=10.0,  # Connection timeout (upload_data)
+    rmw_upload_read_timeout=300.0     # Read timeout (upload_data)
 )
 ```
 
-Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts. The `search_hub_all` method paginates automatically (1000 sets per page, up to 20 pages) to avoid timeouts on large result sets.
+Uploads use a longer timeout (5 minutes) and smaller batch sizes (5 gear sets per request) to avoid hanging on slow RMW Hub responses. Both `search_hub` and `upload_data` retry up to 3 times on 502/503/504 responses with a 5-second delay between attempts. The `search_hub_all` method paginates automatically (1000 sets per page, up to 20 pages) to avoid timeouts on large result sets.
 
 ### Gear Client Timeouts
 
