@@ -482,7 +482,13 @@ class RmwHubAdapter:
             device_additional_data = trap.dict()
 
             device = {
-                "device_id": trap.id,
+                # Normalize to lowercase: RMW Hub can return the same UUID with
+                # inconsistent casing for a set vs. its trap (e.g. set_id uppercase,
+                # trap_id lowercase). ER keys the subject off set_id and the
+                # subjectsource off device_id, so mismatched casing leaves the subject
+                # orphaned (inactive) from an active subjectsource. Internal dedup
+                # already lowercases all ids, so the payload must match.
+                "device_id": str(trap.id).lower(),
                 "last_deployed": last_deployed,
                 "last_updated": last_updated,
                 "recorded_at": recorded_at,
@@ -504,7 +510,7 @@ class RmwHubAdapter:
         payload = {
             "deployment_type": deployment_type,
             "manufacturer_name": "RMWHub",
-            "set_id": gearset.id,
+            "set_id": str(gearset.id).lower(),
             "devices_in_set": len(devices),
             "devices": devices,
         }
