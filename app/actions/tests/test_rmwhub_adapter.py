@@ -1164,6 +1164,8 @@ class TestRmwHubAdapter:
             ("ACOUSTIC", "acoustic"),
             ("timed", "timed"),
             ("Galvanic", "galvanic"),
+            (" Acoustic ", "acoustic"),  # whitespace-padded values are stripped
+            ("timed ", "timed"),
         ],
     )
     def test_create_gear_payload_lowercases_release_type(self, adapter, raw_release_type, expected):
@@ -1174,7 +1176,7 @@ class TestRmwHubAdapter:
 
         assert result["devices"][0]["release_type"] == expected
 
-    @pytest.mark.parametrize("raw_release_type", ["none", "None", "NONE", "", None])
+    @pytest.mark.parametrize("raw_release_type", ["none", "None", "NONE", "", None, " none ", "   "])
     def test_create_gear_payload_omits_none_release_type(self, adapter, raw_release_type):
         """Empty/none release types are omitted from the payload."""
         gearset, trap = self._make_gearset_with_release_type(raw_release_type)
