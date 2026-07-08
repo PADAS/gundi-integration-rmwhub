@@ -1099,6 +1099,40 @@ class TestRmwHubAdapter:
         assert device["device_status"] == "deployed"
         assert result["initial_deployment_date"] == "2023-09-15T14:30:00+00:00"
 
+    def test_create_gear_payload_normalizes_id_casing(self, adapter):
+        """RMW Hub can return the same UUID with different casing for set vs. trap.
+        Both set_id and device_id must be lowercased so ER links the subject to its
+        subjectsource instead of orphaning an inactive subject."""
+        uuid = "6e451c36-38eb-463c-8c70-31d0121f46aa"
+        trap = Trap(
+            id=uuid,  # lowercase
+            sequence=1,
+            latitude=41.771908883867766,
+            longitude=-70.50338133238256,
+            deploy_datetime_utc="2026-06-29T20:31:37Z",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type="none",
+            is_on_end=True,
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id=uuid.upper(),  # uppercase — same UUID, different case
+            deployment_type="single",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2026-06-29T20:31:37Z",
+            traps=[trap],
+        )
+
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+
+        assert result["set_id"] == uuid
+        assert result["devices"][0]["device_id"] == uuid
+
     def test_create_gear_payload_from_gearset_deployed_uses_deploy_time_when_gearset_unchanged(self, adapter):
         """When when_updated_utc is missing or not after deploy, last_updated/recorded_at stay at deploy time."""
         trap = Trap(
