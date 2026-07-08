@@ -1166,7 +1166,7 @@ class TestRmwHubAdapter:
             ("Galvanic", "galvanic"),
         ],
     )
-    def test_create_gear_payload_normalizes_release_type_casing(self, adapter, raw_release_type, expected):
+    def test_create_gear_payload_lowercases_release_type(self, adapter, raw_release_type, expected):
         """release_type is lowercased so the Buoy API ChoiceField accepts it (400 otherwise)."""
         gearset, trap = self._make_gearset_with_release_type(raw_release_type)
 
@@ -1174,9 +1174,9 @@ class TestRmwHubAdapter:
 
         assert result["devices"][0]["release_type"] == expected
 
-    @pytest.mark.parametrize("raw_release_type", ["none", "None", "", None, "manual", "unknown-type"])
-    def test_create_gear_payload_omits_unsupported_release_type(self, adapter, raw_release_type):
-        """Unsupported/none release types are omitted so the whole gearset isn't rejected."""
+    @pytest.mark.parametrize("raw_release_type", ["none", "None", "NONE", "", None])
+    def test_create_gear_payload_omits_none_release_type(self, adapter, raw_release_type):
+        """Empty/none release types are omitted from the payload."""
         gearset, trap = self._make_gearset_with_release_type(raw_release_type)
 
         result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
@@ -1334,7 +1334,7 @@ class TestRmwHubAdapter:
             retrieved_datetime_utc=None,
             status="deployed",
             accuracy="gps",
-            release_type="galvanic",
+            release_type="manual",
             is_on_end=False
         )
         trap2 = Trap(
@@ -1372,7 +1372,7 @@ class TestRmwHubAdapter:
         assert result["devices"][1]["recorded_at"] == "2023-09-15T14:35:00+00:00"
         
         # Check release_type handling
-        assert result["devices"][0]["release_type"] == "galvanic"
+        assert result["devices"][0]["release_type"] == "manual"
         assert result["devices"][1]["release_type"] == "timed"
 
     def test_create_gear_payload_from_gearset_release_type_none(self, adapter):
