@@ -499,8 +499,12 @@ class RmwHubAdapter:
                 },
                 "device_additional_data": device_additional_data
             }
-            if trap.release_type and trap.release_type != "none":
-                device["release_type"] = trap.release_type 
+            # Lowercase release_type: the Buoy API choices are lowercase
+            # (timed/acoustic/galvanic) but RMW Hub sends inconsistent casing
+            # (e.g. "Acoustic"), which gets the whole gearset payload rejected with a 400.
+            release_type = (trap.release_type or "").strip().lower()
+            if release_type and release_type != "none":
+                device["release_type"] = release_type
             devices.append(device)
         
         # Determine deployment type

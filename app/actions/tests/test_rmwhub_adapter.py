@@ -1164,6 +1164,64 @@ class TestRmwHubAdapter:
         assert device["last_updated"] == "2023-09-20T10:00:00+00:00"
         assert device["recorded_at"] == "2023-09-20T10:00:00+00:00"
 
+    @staticmethod
+    def _make_gearset_with_release_type(release_type):
+        trap = Trap(
+            id="trap_001",
+            sequence=1,
+            latitude=-42.8509254,
+            longitude=147.3067216,
+            deploy_datetime_utc="2023-09-15T14:30:00Z",
+            surface_datetime_utc=None,
+            retrieved_datetime_utc=None,
+            status="deployed",
+            accuracy="gps",
+            release_type=release_type,
+            is_on_end=True,
+        )
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id="gearset_001",
+            deployment_type="trawl",
+            traps_in_set=1,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[trap],
+        )
+        return gearset, trap
+
+    @pytest.mark.parametrize(
+        "raw_release_type,expected",
+        [
+            ("Acoustic", "acoustic"),  # RMW Hub sends mixed casing (e.g. Fiomarine traps)
+            ("ACOUSTIC", "acoustic"),
+            ("timed", "timed"),
+            ("Galvanic", "galvanic"),
+            (" Acoustic ", "acoustic"),  # whitespace-padded values are stripped
+            ("timed ", "timed"),
+        ],
+    )
+    def test_create_gear_payload_lowercases_release_type(self, adapter, raw_release_type, expected):
+        """release_type is lowercased so the Buoy API ChoiceField accepts it (400 otherwise)."""
+        gearset, trap = self._make_gearset_with_release_type(raw_release_type)
+
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+
+        assert result["devices"][0]["release_type"] == expected
+
+    @pytest.mark.parametrize("raw_release_type", ["none", "None", "NONE", "", None, " none ", "   "])
+    def test_create_gear_payload_omits_none_release_type(self, adapter, raw_release_type):
+        """Empty/none release types are omitted from the payload."""
+        gearset, trap = self._make_gearset_with_release_type(raw_release_type)
+
+        result = adapter._create_gear_payload_from_gearset(gearset, [trap], "deployed")
+
+        device = result["devices"][0]
+        assert "release_type" not in device
+        # Raw value still preserved for traceability
+        assert device["device_additional_data"]["release_type"] == raw_release_type
+
     def test_create_gear_payload_from_gearset_hauled_with_retrieved(self, adapter):
         """Test creating gear payload for hauled traps uses retrieved_datetime_utc for recorded_at."""
         trap = Trap(
