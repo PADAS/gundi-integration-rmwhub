@@ -31,6 +31,10 @@ LOCATION_TOLERANCE_DEGREES = 0.0001
 # Page size for iterating over gears in EarthRanger.
 ER_GEAR_PAGE_SIZE = 500
 
+# Release types accepted by the Buoy API (lowercase). Any other value in a payload
+# is rejected with a 400, which fails the entire gearset.
+VALID_RELEASE_TYPES = {"timed", "acoustic", "galvanic"}
+
 
 def _ensure_tz_utc(dt_str: str) -> str:
     """Normalize an ISO 8601 timestamp string to UTC and return it as ISO.
@@ -493,8 +497,18 @@ class RmwHubAdapter:
                 },
                 "device_additional_data": device_additional_data
             }
-            if trap.release_type and trap.release_type != "none":
-                device["release_type"] = trap.release_type 
+            # Normalize release_type: the Buoy API only accepts lowercase values
+            # (timed/acoustic/galvanic). RMW Hub sends inconsistent casing (e.g. "Acoustic"),
+            # which gets the whole gearset payload rejected with a 400. Unknown values are
+            # dropped from the payload; the raw value is still in device_additional_data.
+            release_type = (trap.release_type or "").lower()
+            if release_type in VALID_RELEASE_TYPES:
+                device["release_type"] = release_type
+            elif release_type and release_type != "none":
+                logger.warning(
+                    "Trap %s has unsupported release_type %r; omitting it from the Buoy payload",
+                    trap.id, trap.release_type,
+                )
             devices.append(device)
         
         # Determine deployment type
