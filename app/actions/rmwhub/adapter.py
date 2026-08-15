@@ -375,8 +375,24 @@ class RmwHubAdapter:
                         gearset.id, dropped + 1, trap_id,
                     )
             
+            # A gearset with ≥1 retrieved trap in RMW must end up hauled in ER (whole-set
+            # haul rule below). When such a set already exists in ER, its still-"deployed"
+            # RMW traps mismatch ER's hauled state every sync and land in traps_to_deploy;
+            # re-deploying them would reactivate the hauled set and ping-pong it between
+            # deployed and hauled on every run until RMW retires the remaining traps.
+            # Skip the deploy payload instead. A genuinely redeployed set (RMW reuses the
+            # set_id after an accidental haul) reports all traps as "deployed", so it
+            # still takes the deploy path below.
+            has_retrieved_trap = any(trap.status == "retrieved" for trap in gearset.traps)
+            if traps_to_deploy and not traps_to_haul and er_gear and has_retrieved_trap:
+                logger.info(
+                    "Skipping deployment payload for gear set %s: RMW still reports ≥1 retrieved trap "
+                    "and the set exists in ER (status=%s); re-deploying would reactivate a hauled set",
+                    gearset.id,
+                    er_gear.status,
+                )
             # Create gear payloads for deployment
-            if traps_to_deploy and not traps_to_haul:
+            elif traps_to_deploy and not traps_to_haul:
                 # When the set already exists in ER and we have new traps to deploy (e.g. device moved
                 # from another set), send the full trap list for this set so the Buoy API can update
                 # set membership. Sending only the new device can be ignored if the device already
