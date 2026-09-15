@@ -1000,10 +1000,186 @@ class TestRmwHubAdapter:
         )
         
         adapter.gear_client.get_all_gears = AsyncMock(return_value=[])
-        
+
         result = await adapter.process_download([gearset])
-        
+
         assert result == []  # Should skip retrieved trap with no ER gear
+
+    @pytest.mark.asyncio
+    async def test_process_download_skips_deploy_for_partially_retrieved_set_hauled_in_er(self, adapter):
+        """A set hauled in ER with ≥1 retrieved trap in RMW must NOT get a deployment
+        payload for its remaining "deployed" RMW traps.
+
+        Regression for the deploy/haul ping-pong: after the whole-set haul, RMW keeps
+        reporting the non-retrieved trap as "deployed"; re-deploying it reactivates the
+        hauled set in ER, which triggers a whole-set haul on the next run, and so on
+        every sync cycle until RMW retires the remaining trap.
+        """
+        set_id = uuid.uuid4()
+        trap_id_retrieved = str(uuid.uuid4())
+        trap_id_deployed = str(uuid.uuid4())
+
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id=str(set_id),
+            deployment_type="trawl",
+            traps_in_set=2,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-15T18:00:00Z",
+            traps=[
+                Trap(
+                    id=trap_id_retrieved,
+                    sequence=1,
+                    latitude=42.123456,
+                    longitude=-71.987654,
+                    deploy_datetime_utc="2023-09-10T14:30:00Z",
+                    surface_datetime_utc=None,
+                    retrieved_datetime_utc="2023-09-15T17:30:00Z",
+                    status="retrieved",
+                    accuracy="gps",
+                    release_type="acoustic",
+                    is_on_end=True,
+                ),
+                Trap(
+                    id=trap_id_deployed,
+                    sequence=2,
+                    latitude=42.223456,
+                    longitude=-71.887654,
+                    deploy_datetime_utc="2023-09-10T14:35:00Z",
+                    surface_datetime_utc=None,
+                    retrieved_datetime_utc=None,
+                    status="deployed",
+                    accuracy="gps",
+                    release_type="acoustic",
+                    is_on_end=True,
+                ),
+            ],
+        )
+
+        er_gear = BuoyGear(
+            id=set_id,
+            display_id="gear_001",
+            name="Test Gear",
+            status="hauled",
+            last_updated=datetime.now(timezone.utc),
+            devices=[
+                BuoyDevice(
+                    device_id=trap_id_retrieved,
+                    mfr_device_id="mfr_001",
+                    label="Device 1",
+                    location=DeviceLocation(latitude=42.123456, longitude=-71.987654),
+                    last_updated=datetime.now(timezone.utc),
+                    last_deployed=datetime.now(timezone.utc),
+                ),
+                BuoyDevice(
+                    device_id=trap_id_deployed,
+                    mfr_device_id="mfr_002",
+                    label="Device 2",
+                    location=DeviceLocation(latitude=42.223456, longitude=-71.887654),
+                    last_updated=datetime.now(timezone.utc),
+                    last_deployed=datetime.now(timezone.utc),
+                ),
+            ],
+            type="buoy",
+            manufacturer="rmwhub",
+            additional={},
+        )
+
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[er_gear])
+
+        result = await adapter.process_download([gearset])
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_process_download_redeploys_hauled_set_when_all_traps_deployed(self, adapter):
+        """A hauled ER set whose RMW traps are ALL "deployed" is a genuine redeploy
+        (RMW reuses the set_id after an accidental haul) and must still get a
+        deployment payload — the ping-pong guard only applies while RMW reports a
+        retrieved trap in the set.
+        """
+        set_id = uuid.uuid4()
+        trap_id_a = str(uuid.uuid4())
+        trap_id_b = str(uuid.uuid4())
+
+        gearset = GearSet(
+            vessel_id="vessel_001",
+            id=str(set_id),
+            deployment_type="trawl",
+            traps_in_set=2,
+            trawl_path={},
+            share_with=[],
+            when_updated_utc="2023-09-16T09:00:00Z",
+            traps=[
+                Trap(
+                    id=trap_id_a,
+                    sequence=1,
+                    latitude=42.123456,
+                    longitude=-71.987654,
+                    deploy_datetime_utc="2023-09-16T08:30:00Z",
+                    surface_datetime_utc=None,
+                    retrieved_datetime_utc=None,
+                    status="deployed",
+                    accuracy="gps",
+                    release_type="acoustic",
+                    is_on_end=True,
+                ),
+                Trap(
+                    id=trap_id_b,
+                    sequence=2,
+                    latitude=42.223456,
+                    longitude=-71.887654,
+                    deploy_datetime_utc="2023-09-16T08:35:00Z",
+                    surface_datetime_utc=None,
+                    retrieved_datetime_utc=None,
+                    status="deployed",
+                    accuracy="gps",
+                    release_type="acoustic",
+                    is_on_end=True,
+                ),
+            ],
+        )
+
+        er_gear = BuoyGear(
+            id=set_id,
+            display_id="gear_001",
+            name="Test Gear",
+            status="hauled",
+            last_updated=datetime.now(timezone.utc),
+            devices=[
+                BuoyDevice(
+                    device_id=trap_id_a,
+                    mfr_device_id="mfr_001",
+                    label="Device 1",
+                    location=DeviceLocation(latitude=42.123456, longitude=-71.987654),
+                    last_updated=datetime.now(timezone.utc),
+                    last_deployed=datetime.now(timezone.utc),
+                ),
+                BuoyDevice(
+                    device_id=trap_id_b,
+                    mfr_device_id="mfr_002",
+                    label="Device 2",
+                    location=DeviceLocation(latitude=42.223456, longitude=-71.887654),
+                    last_updated=datetime.now(timezone.utc),
+                    last_deployed=datetime.now(timezone.utc),
+                ),
+            ],
+            type="buoy",
+            manufacturer="rmwhub",
+            additional={},
+        )
+
+        adapter.gear_client.get_all_gears = AsyncMock(return_value=[er_gear])
+
+        result = await adapter.process_download([gearset])
+
+        assert len(result) == 1
+        payload = result[0]
+        assert payload["set_id"] == str(set_id).lower()
+        device_ids = [d["device_id"] for d in payload["devices"]]
+        assert sorted(device_ids) == sorted([trap_id_a.lower(), trap_id_b.lower()])
+        assert all(d["device_status"] == "deployed" for d in payload["devices"])
 
     @pytest.mark.asyncio
     async def test_create_rmw_update_from_rmwhub_gear(self, adapter):
